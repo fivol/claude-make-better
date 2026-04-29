@@ -1,0 +1,9 @@
+{
+  "name": "main",
+  "description": "Custom Claude Code skills by fivol",
+  "version": "0.1.0",
+  "author": {
+    "name": "fivol",
+    "url": "https://github.com/fivol"
+  }
+}

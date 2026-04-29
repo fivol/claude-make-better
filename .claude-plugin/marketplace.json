@@ -1,0 +1,15 @@
+{
+  "name": "fivol-skills",
+  "owner": {
+    "name": "fivol",
+    "url": "https://github.com/fivol"
+  },
+  "plugins": [
+    {
+      "name": "main",
+      "description": "Main collection of custom Claude Code skills",
+      "source": "plugins/main",
+      "version": "0.1.0"
+    }
+  ]
+}
