@@ -28,7 +28,7 @@ Return a JSON array. Each entry:
 
 ```json
 {
-  "file": "server/src/routes/snapshots.ts",
+  "file": "src/routes/checkout.ts",
   "line": 88,
   "issue": "for each patch, fetches user record sequentially (N+1)",
   "severity": "medium",

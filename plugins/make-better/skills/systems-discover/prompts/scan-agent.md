@@ -16,7 +16,7 @@ You scan ONE top-level subsystem of the repository (e.g., `app/`, `server/`, `we
 
 ### 1. Survey the subsystem
 - List directories one level deep under `subsystem_root`. Each directory is a candidate cluster.
-- List top-level files (non-directory) — they often belong to one system collectively (e.g., `app/lib/main.dart` + entry plumbing = one bootstrap system).
+- List top-level files (non-directory) — they often belong to one system collectively (e.g., `lib/main.dart` + entry plumbing = one bootstrap system).
 - For each cluster, read 2–3 representative files (the most central by name: `index.ts`, `main.dart`, `app.ts`, anything matching the cluster name).
 
 ### 2. Cluster by purpose
@@ -67,8 +67,8 @@ Return a single JSON object:
       "name": "Inline Links Rendering (flutter)",
       "candidate_section": "Flutter App",
       "areas": [
-        "app/lib/features/links/",
-        "app/lib/design/patterns/breadcrumb.dart"
+        "lib/features/links/",
+        "lib/design/patterns/breadcrumb.dart"
       ],
       "notes": "Markdown link expansion, preview sheet, title indexing.",
       "cross_cutting_hint": null,
@@ -80,8 +80,8 @@ Return a single JSON object:
     {
       "existing_system_name": "Recent Panel",
       "new_areas": [
-        "app/lib/features/recent/widgets/recent_panel.dart",
-        "app/lib/features/recent/providers/recent_provider.dart"
+        "lib/features/recent/widgets/recent_panel.dart",
+        "lib/features/recent/providers/recent_provider.dart"
       ],
       "reason": "added providers file in this scope"
     }

@@ -95,7 +95,7 @@ Return a JSON array. Each entry:
 
 ```json
 {
-  "file": "web/src/auth/AuthClient.ts",
+  "file": "src/client/auth_client.ts",
   "line": 0,
   "issue": "Auth redirect assumes same-tab navigation. Firefox with strict popup blocker opens the auth provider in a popup, leaving the original tab on the login screen — the redirect callback never reaches the original tab and the user is stuck.",
   "severity": "high",

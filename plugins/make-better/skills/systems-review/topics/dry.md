@@ -60,9 +60,9 @@ Return a JSON array. Each entry:
 
 ```json
 {
-  "file": "app/lib/features/links/widgets/link_preview_sheet.dart",
+  "file": "lib/features/links/widgets/link_preview_sheet.dart",
   "line": 88,
-  "issue": "url validation duplicates `app/lib/core/url/parse.dart::parseUrl` (3 call sites in this widget)",
+  "issue": "url validation duplicates `lib/core/url/parse.dart::parseUrl` (3 call sites in this widget)",
   "severity": "medium",
   "suggested_fix": "replace inline regex with parseUrl(); remove local helper"
 }

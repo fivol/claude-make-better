@@ -24,7 +24,7 @@ Return a JSON array. Each entry:
 
 ```json
 {
-  "file": "server/src/services/Database.ts",
+  "file": "src/services/database.ts",
   "line": 142,
   "issue": "session token written to logs in error path",
   "severity": "high",

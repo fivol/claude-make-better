@@ -40,7 +40,7 @@ For internal use, structured as:
     {
       "name": "Google Auth (web → server)",
       "section": "Auth",
-      "areas": ["web/src/auth/...", "server/src/routes/auth.ts", "..."],
+      "areas": ["src/client/auth/...", "src/routes/auth.ts", "..."],
       "notes": "OAuth flow; web initiates, server validates id_token.",
       "marker": "NEW" | "REBUILT",
       "preserved_from_existing": null | { "name": "<old name>", "last_review": "...", "status": "...", "blocker": "..." }

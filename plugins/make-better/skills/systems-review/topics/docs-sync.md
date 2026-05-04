@@ -42,7 +42,7 @@ For missing docs:
   "line": 0,
   "issue": "Snapshot Merger added in this system has no entry under Internal Structure",
   "severity": "low",
-  "suggested_fix": "add module row pointing to server/src/services/SnapshotMerger.ts"
+  "suggested_fix": "add module row pointing to src/services/payment_processor.ts"
 }
 ```
 

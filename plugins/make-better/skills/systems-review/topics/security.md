@@ -34,7 +34,7 @@ Return a JSON array. Each entry:
 
 ```json
 {
-  "file": "server/src/routes/auth.ts",
+  "file": "src/routes/auth.ts",
   "line": 88,
   "issue": "session token included in 500 response body",
   "severity": "critical",

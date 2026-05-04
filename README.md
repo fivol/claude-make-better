@@ -79,11 +79,13 @@ Successful fixes still land as merge commits on your current branch — same flo
 
 ## Set it and forget it
 
+If you have a scheduler available — for example the [`/schedule`](https://github.com/anthropics/claude-code) skill from another plugin — point it at `/make-better --yes`:
+
 ```
 /schedule create "0 9 * * 1" /make-better --yes 5
 ```
 
-Every Monday at 9am: 5 stale systems reviewed, fixes merged into the current branch (unpushed), ready for your morning coffee.
+Otherwise use `cron` with Claude Code's non-interactive mode (consult [Claude Code docs](https://docs.claude.com/en/docs/claude-code) for the exact CLI invocation in your version). Either way: every Monday at 9am, 5 stale systems get reviewed, fixes merged into the current branch (unpushed), ready for your morning coffee.
 
 ## Configuration
 
@@ -111,7 +113,9 @@ Every key is optional. Anything missing falls back to plugin defaults. Full sche
 Add your own audit topics — perf budgets, accessibility, internal style guides, anything you want flagged on every review.
 
 1. Drop a prompt at `.claude/make-better/topics/<name>.md`.
-2. Add `<name>` to `topics_required` in your config.
+2. Add `<name>` to `topics_required` (or `topics_optional`) in your config.
+
+> **Heads up:** `topics_required` is **replaced** by your config, not merged element-wise. List every topic you want — built-ins you keep AND your additions. The same applies to `topics_optional`.
 
 Done. Full guide with prompt template: **[docs/custom-topics.md](docs/custom-topics.md)**.
 

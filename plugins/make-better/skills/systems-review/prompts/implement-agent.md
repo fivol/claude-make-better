@@ -17,23 +17,32 @@ Execute every step in `detailed_plan` in order. For each step, edit the file spe
 If a step is genuinely impossible to apply as written (the file shape has changed since the plan was made, the plan misnames a function), STOP and return `verdict: needs_user_decision` with a clear `blocker` describing what changed and what is now ambiguous.
 
 ### 2. Run lint scoped to the system
-Pick the lint command appropriate to each file in `areas`:
-- TypeScript / JavaScript (server, web, common): `pnpm lint -- <paths>` from repo root.
-- Flutter / Dart (`app/`): `cd app && flutter analyze <paths>`.
-- Other: use the closest project convention.
+Detect the project's lint command before invoking anything. In order of preference:
+
+1. `CLAUDE.md` / `AGENTS.md` / `GEMINI.md` at repo root — explicit instructions usually live here.
+2. `package.json` `scripts.lint` (Node — note: it can be `npm`, `pnpm`, `yarn`, or `bun`; check the lockfile to pick the right runner).
+3. `Makefile` targets like `lint`, `check`.
+4. Language conventions: `cargo clippy` (Rust), `golangci-lint run` / `go vet ./...` (Go), `ruff check` / `flake8` / `mypy` (Python), `mix credo` (Elixir), `flutter analyze` (Dart), etc.
+5. Per-subdirectory tooling: monorepos often have a different runner per package (e.g. `cd server && <cmd>`). Match the convention in the area you're touching.
+
+Run lint scoped to the files in `areas:` if the tool supports it; otherwise run the project default.
 
 If lint fails on changes you made:
 - If the failure is fixable in the spirit of the plan (typing nit, missing import), fix it and retry once.
 - If lint fails on code you did NOT change in this run, leave it (out of scope).
 - If still failing on your changes after one retry, return `needs_user_decision` with the failing message.
 
-### 3. Run system-scope tests
-Run the tests identified by the `tests` topic in the plan, plus any tests living next to files in `areas`. Examples:
-- `pnpm test tests/unit/auth/`
-- `cd app && flutter test test/features/links/`
-- `cd server && pnpm test tests/unit/snapshots/`
+If you cannot find any lint command after checking the above, skip this step and note `lint_skipped: "no lint command detected"` in your return value. Don't fabricate one.
 
-Do NOT run the full suite. The main agent does that in Phase 4.
+### 3. Run system-scope tests
+Run tests identified by the `tests` topic in the plan plus any test files adjacent to `areas:`. Detect the test command the same way as lint:
+
+1. `CLAUDE.md` / `AGENTS.md` instructions.
+2. `package.json` `scripts.test` (with the right runner from the lockfile).
+3. Language conventions: `cargo test`, `go test ./<pkg>/...`, `pytest <path>`, `flutter test <path>`, `mix test`, etc.
+4. Per-subdirectory: in monorepos, `cd <package> && <test cmd>` is common.
+
+Run **only the tests for this system** — narrow paths, not the full suite. The main agent runs the full suite in Phase 4.
 
 If tests fail:
 - If the failure is in a test you modified or added, and the production code is correct, fix the test.
@@ -58,7 +67,7 @@ git add <changed paths>
 git commit -m "$(cat <<'EOF'
 refactor(auth): unify 401 error handling across web and server
 
-- Single error mapper in web/src/auth/AuthClient.ts
+- Single error mapper in src/client/auth_client.ts
 - Server returns matching status codes
 - New unit test for the mapper
 

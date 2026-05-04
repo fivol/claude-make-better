@@ -142,7 +142,7 @@ These are short, concrete verifications the user can run after the implement pha
 Each item is `{ what, how }`:
 
 - `what` — one sentence describing the property to check (a behavior, an output shape, an absence in logs, a UI state).
-- `how` — one sentence with concrete steps. Prefer commands the user can copy-paste (`ssh helsinki docker logs ...`, `pnpm test <path>`, `curl <url>`, MCP tool invocations) over vague instructions ("look at the file"). For UI changes, name the screen and the action; for backend changes, name the request/log/query.
+- `how` — one sentence with concrete steps. Prefer commands the user can copy-paste (`<project's test cmd> <path>`, `curl <url>`, `tail -f <log>`, project-specific CLI invocations) over vague instructions ("look at the file"). For UI changes, name the screen and the action; for backend changes, name the request/log/query. Use whatever tooling the project actually uses — don't fabricate commands.
 
 Skip checks that:
 - Are already covered by automated tests (those run in Phase 4.2; no need to repeat).

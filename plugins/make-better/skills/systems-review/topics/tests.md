@@ -17,13 +17,11 @@ required: true
 - Test code style nits → `consistency`.
 
 ## Procedure
-1. Locate tests covering files in `areas:` (under `tests/`, `server/tests/`, `bot/tests/`, sibling `*_test.dart` for Flutter).
-2. **Run** the located tests:
-   - Node code → `pnpm test <path>` or the project-specific test command.
-   - Flutter code → `cd app && flutter test <path>`.
-   - Server code → `cd server && pnpm test <path>`.
-3. Record failures with their messages.
-4. For each behavior in the production code that lacks a test, propose one (with a one-line description; the implementer writes the actual code).
+1. Locate tests covering files in `areas:`. Common locations: `tests/`, `test/`, `__tests__/`, sibling `*.test.ts` / `*_test.dart` / `*_test.go` / `test_*.py`. In monorepos, look under each affected package.
+2. **Detect the project's test command.** In order: `CLAUDE.md` / `AGENTS.md`; `package.json` `scripts.test` (use the runner from the lockfile — `npm` / `pnpm` / `yarn` / `bun`); language conventions (`pytest <path>`, `cargo test <name>`, `go test ./<pkg>/...`, `flutter test <path>`, `mix test`); per-subdirectory tooling (`cd <package> && <test cmd>`). Use the project's command — do not invent one.
+3. **Run** the located tests with the detected command, scoped to the relevant paths.
+4. Record failures with their messages.
+5. For each behavior in the production code that lacks a test, propose one (with a one-line description; the implementer writes the actual code).
 
 ## Output format
 Return a JSON array. Each entry:

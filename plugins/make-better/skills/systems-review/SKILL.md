@@ -296,12 +296,9 @@ After each successful merge:
 - The Agent tool cleans up worktrees automatically once they're merged.
 
 ### 4.2 Run full lint and test
-From repo root:
+From repo root, run the project's full lint and test commands. Detect them by checking, in order: `CLAUDE.md` / `AGENTS.md` / `GEMINI.md` for explicit instructions, then `package.json` `scripts.{lint,test}` (using the runner from the lockfile — `npm`/`pnpm`/`yarn`/`bun`), then `Makefile` targets, then language conventions (`cargo clippy && cargo test`, `go vet ./... && go test ./...`, `ruff check && pytest`, `flutter analyze && flutter test`, etc.).
 
-```
-pnpm lint
-pnpm test
-```
+Run the same commands the project's CI runs — that's the contract. If you cannot find a lint or test command, skip that part and note it in the report (`Full lint+test after merges: SKIPPED — no commands detected`).
 
 If they pass: continue.
 If they fail:
@@ -438,7 +435,7 @@ Full lint+test after merges: PASS
    last_review: 2026-04-29
 
 📝 Registry corrections:
-   - Snapshot Merger → areas updated (server/src/services/sync/ moved)
+   - Payment Processor → areas updated (src/services/sync/ moved)
 
 Branches not pushed. Run `git push` when ready.
 ```

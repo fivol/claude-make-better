@@ -44,7 +44,7 @@ Dispatches one **scan agent** per subsystem (`max_parallel_scan_agents`, default
 
 ### Phase 3 — Cross-cutting merge
 
-The main agent collects all scan-agent outputs and reconciles cross-cutting systems (a system whose areas span multiple subsystems — e.g. "Auth flow" spans `server/auth` and `app/lib/auth`).
+The main agent collects all scan-agent outputs and reconciles cross-cutting systems (a system whose areas span multiple subsystems — e.g. an "Auth flow" that spans both server-side handlers and client-side login UI).
 
 For each potential cross-cutting system:
 
@@ -91,16 +91,16 @@ Maintained by humans + `/systems-discover` + `/systems-review`.
 
 ### Auth middleware
 - areas:
-  - server/src/middleware/auth.ts
-  - server/src/services/Session.ts
+  - src/middleware/auth.ts
+  - src/services/session.ts
 - last_review: 2026-04-29
 - notes: handles JWT verification and session lookup
 
-### Snapshot Merger ⚠ needs decision
+### Payment Processor ⚠ needs decision
 - areas:
-  - server/src/services/SnapshotMerger.ts
+  - src/services/payment_processor.ts
 - status: needs_user_decision
-- blocker: "LWW vs vector-clock — picked LWW but unverified under concurrent edits"
+- blocker: "retry strategy unclear — exponential vs jittered backoff under load"
 - notes: …
 ```
 

@@ -30,7 +30,7 @@ Return a JSON array. Each entry:
 
 ```json
 {
-  "file": "server/src/services/Database.ts",
+  "file": "src/services/database.ts",
   "line": 0,
   "issue": "Database service directly imports HTTP response builder from routes/auth.ts",
   "severity": "high",
