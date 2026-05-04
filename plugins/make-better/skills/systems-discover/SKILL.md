@@ -31,6 +31,20 @@ bash ${CLAUDE_SKILL_DIR}/bin/load-config.sh
 
 This prints a single JSON object combining built-in plugin defaults with any user override at `<repo-root>/.claude/make-better/config.json`. All knobs come from this object. Do not read any config file directly — always go through the loader.
 
+### Model self-check
+
+This skill is declared with `model: opus` in its frontmatter, but Claude Code versions that don't honor that field would silently fall back to the user's session model. Verify your own identity before doing real work.
+
+If your model is **not Opus** (any 4.x variant), surface a single one-line warning (translate as needed):
+
+> "⚠ Make Better expects Opus for best results, but this turn is executing on `<your-model>`. Scan sub-agents are still pinned to Opus via config, but the orchestrator's merge and rename decisions may be lower quality. Consider `/model opus` and re-running."
+
+Then:
+- If `non_interactive` is true: log the warning and continue.
+- Otherwise: call `AskUserQuestion` with options `Continue anyway` (default) and `Abort — I'll switch to Opus and re-run`. Proceed based on choice.
+
+If your model is Opus, say nothing — silent on the happy path.
+
 ## Non-interactive mode (`--yes`)
 
 When `non_interactive` is true, every step below that would normally pause for user input must instead resolve automatically. The rules:

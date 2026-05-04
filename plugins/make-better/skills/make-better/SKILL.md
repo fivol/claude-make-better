@@ -41,6 +41,20 @@ The output is a single merged JSON object. From it you need:
 
 Render every user-facing message you produce in `user_language`. Skill instructions, JSON shapes, branch names, commit messages stay English regardless.
 
+### Model self-check
+
+This skill is declared with `model: opus` in its frontmatter, but Claude Code versions that don't honor that field would silently fall back to the user's session model. Verify your own identity before continuing.
+
+If your model is **not Opus** (any 4.x variant), surface a single one-line warning in `user_language`:
+
+> "⚠ Make Better expects Opus for best results, but this turn is executing on `<your-model>`. Sub-skills are still pinned to Opus via their own frontmatter, so review/discover quality is preserved — only this orchestrator's planning is on a smaller model. Consider `/model opus` and re-running."
+
+Then:
+- If `non_interactive` is true: log the warning and continue.
+- Otherwise: call `AskUserQuestion` with options `Continue anyway` (default) and `Abort — I'll switch to Opus and re-run`. Proceed based on choice.
+
+If your model is Opus, say nothing.
+
 ## Step 3 — Inspect registry state
 
 Read the file at `<registry_path>`:

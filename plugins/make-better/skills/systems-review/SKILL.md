@@ -38,6 +38,20 @@ Apply user `count` only if it is `<= max_systems_per_run`; otherwise clamp and i
 ### User-facing language
 The config has a `user_language` field (default `"en"`). Render **every user-facing message** in this language: status lines, plan mode content, AskUserQuestion prompts and option labels, the final report, error messages. The instructions in this skill, JSON shapes exchanged with sub-agents, commit messages, branch names, and code stay in English regardless. Translate only what the user reads.
 
+### Model self-check
+
+This skill is declared with `model: opus` in its frontmatter, but Claude Code versions that don't honor that field would silently fall back to the user's session model. Verify your own identity before doing real work.
+
+If your model is **not Opus** (any 4.x variant), surface a single one-line warning in `user_language` (an English template — translate as needed):
+
+> "⚠ Make Better expects Opus for best results, but this turn is executing on `<your-model>`. Sub-agents (review/implement/scan) are still pinned to Opus via config, but the orchestrator's planning and merge-conflict decisions may be lower quality. Consider `/model opus` and re-running."
+
+Then:
+- If `non_interactive` is true: log the warning and continue.
+- Otherwise: call `AskUserQuestion` with options `Continue anyway` (default) and `Abort — I'll switch to Opus and re-run`. Proceed based on choice.
+
+If your model is Opus, say nothing — silent on the happy path.
+
 ## Non-interactive mode (`--yes`)
 
 When `non_interactive` is true (set via `--yes` / `-y` / `--auto`), every step below that would normally pause for user input must instead resolve automatically. The rules:
