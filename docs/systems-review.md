@@ -59,31 +59,37 @@ For every approved system:
 1. Creates an isolated git worktree at `.git/worktrees/systems-review/<system>/`.
 2. Branch: `systems-review/<all|filter>-<timestamp>/<system>`.
 3. Dispatches an **implement agent** (`max_parallel_implement_agents`, default 2) inside the worktree with the `detailed_plan`.
-4. Agent applies fixes, runs tests if available, commits.
-5. Worktree stays in place — nothing gets force-merged into your work. You decide what to land.
+4. Agent applies fixes, runs targeted tests if available, commits inside the worktree.
 
-Parallelism is intentional: separate worktrees mean concurrent implement agents never see each other's changes. Even if two systems touch the same file, they each work on their own branch and merge conflicts (if any) surface when you decide to integrate.
+Parallelism is intentional: separate worktrees mean concurrent implement agents never see each other's changes. Even if two systems touch the same file, each agent works on its own branch.
 
-### Phase 4 — Finalize
+### Phase 4 — Merge & finalize
 
-For each system whose implement phase succeeded:
+This phase runs in the **main checkout** (your current branch — whatever you were on when you invoked `/systems-review`).
 
-1. The worktree's branch is left in place. Branch name is reported back so the user can `git diff systems-review/...`.
-2. Updates `last_review` for that system in `docs/SYSTEMS.md` to today's date.
-3. If implement returned `needs_user_decision` mid-flight (e.g. encountered ambiguity that wasn't in the plan), the system gets `status: needs_user_decision` and a `blocker:` field. `last_review` is **not** stamped — the system stays stale until a human deals with it.
+1. **Merge implementer branches sequentially** with `git merge --no-ff <branch>` for each system that returned `verdict: "success"`. One merge commit per system.
+2. **Resolve conflicts inline.** If two systems touched the same lines, the main agent uses both systems' `detailed_plan` as ground truth to combine them. Trivial conflicts are resolved automatically; ambiguous ones prompt the user (or, with `--yes`, skip the affected system).
+3. **Delete each implementer branch** after a clean merge (`git branch -d`). Worktrees are auto-cleaned by the harness.
+4. **Run full lint + test** from the repo root (`pnpm lint`, `pnpm test`, or whatever the project uses). If a small integration issue surfaces (a shared type changed in two places, missing import in a file two merged systems edited), the agent fixes it directly with a `fix(systems-review): integration fixup` commit. Ambiguous failures prompt the user.
+5. **Update `docs/SYSTEMS.md`** in place: stamp `last_review: <today>` for each merged system, clear `status` / `blocker` if previously set, delete entries for systems whose plan was `system_removed`. Commit: `chore(systems): update review dates`.
+6. **Delete own lockfile.**
 
-If the implementation failed unrecoverably and `--yes` is off, the user is asked. With `--yes`, the system is added to "Skipped — human decision needed" and the run continues.
+Systems with `verdict: "needs_user_decision"` (from review or implement phase) have their branches **deleted without merge**. Their entry in `SYSTEMS.md` gets `status: needs_user_decision (since <today>)` and a one-line `blocker`. `last_review` stays as-is so they don't show up as fresh.
+
+**Nothing is pushed.** The agent never runs `git push`. After the run, your local branch contains: N `Merge branch 'systems-review/.../<system>'` commits + 1 `chore(systems)` commit (+ optionally 1 integration-fixup commit). Inspect with `git log`, push if happy, or `git reset --hard <pre-run sha>` to undo everything.
 
 ### Phase 5 — Report
 
 Final summary aggregates:
 
-- Total findings, broken down by topic.
-- Per-system: branch name, what was done, manual verification steps from the plan.
-- Systems with `status: needs_user_decision` — what blocked them.
+- Bucket counts: ✅ successful, ⚠ needs decision, ✓ clean (no changes), 🗑 removed, integration lint+test PASS/FAIL.
+- Per-system detail: what was done, manual verification steps from the plan, the merge commit SHA.
+- Systems with `status: needs_user_decision` — what blocked them, what the user needs to decide.
 - (`--yes` only) Systems skipped because no safe default could be picked.
 
-The user's main action after a run: `git diff` the review branches, run any manual verifications listed, merge what looks good.
+The user's main action after a run: review the merge commits with `git log -p`, run any manual verifications listed in the report, then `git push` (or `git reset --hard` if something looks wrong).
+
+> **Branch hygiene:** the agent merges into whatever branch you started the run on. Run `/systems-review` from a feature branch you can throw away if you don't like the result, **not** directly from `main` / `master`. The "drop systems that overlap files in your working tree" filter (Phase 0) protects you from conflicts with in-progress changes, but it doesn't protect you from auto-merging into a protected branch.
 
 ## Concurrency model
 

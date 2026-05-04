@@ -1,6 +1,6 @@
 # Make Better
 
-A [Claude Code](https://claude.com/claude-code) plugin that audits and improves an existing codebase. One command picks the oldest subsystems of your project and reviews them across nine topics — bugs, DRY, architecture, consistency, efficiency, tests, docs sync, completeness, and (optionally) security. Findings land as fixes on isolated review branches, ready for you to merge.
+A [Claude Code](https://claude.com/claude-code) plugin that audits and improves an existing codebase. One command picks the oldest subsystems of your project and reviews them across nine topics — bugs, DRY, architecture, consistency, efficiency, tests, docs sync, completeness, and (optionally) security. Fixes are applied as merge commits on your current branch — never pushed, easy to inspect or undo.
 
 ## Install
 
@@ -52,7 +52,9 @@ Total: 104 findings across 5 systems.
   -  3 security
 ```
 
-Each finding lands as a separate, reviewable commit on a `systems-review/<system>` branch. Nothing is force-merged into your work — you decide what to integrate.
+Each system gets its own implementer branch (`systems-review/<system>`), and the agent merges them back into your current branch with `--no-ff` merge commits. Branches are deleted after merge, worktrees auto-cleaned, lint+test runs once at the end. Nothing is pushed — you review with `git log` / `git diff` and either `git push` or `git reset --hard <pre-run sha>`.
+
+> **Tip:** run on a feature branch, not directly on `main` / `master`. The agent merges into whatever branch you're on.
 
 ## Unattended runs
 
@@ -69,7 +71,7 @@ What changes:
 - Ambiguous decisions don't block: the agent picks the safe default if there is one, otherwise skips the affected system and lists it under "Skipped — human decision needed" in the final report.
 - Hard errors still abort.
 
-Fixes still land on isolated branches. Read the branches and the skipped-systems list before merging.
+Successful fixes still land as merge commits on your current branch — same flow as interactive runs. Skipped systems' branches are cleaned up; their status goes into the registry and the final report. Review with `git log` after the run; nothing is pushed.
 
 ## Set it and forget it
 
@@ -77,7 +79,7 @@ Fixes still land on isolated branches. Read the branches and the skipped-systems
 /schedule create "0 9 * * 1" /make-better --yes 5
 ```
 
-Every Monday at 9am: 5 stale systems reviewed, fixes proposed on branches, ready for your morning coffee.
+Every Monday at 9am: 5 stale systems reviewed, fixes merged into the current branch (unpushed), ready for your morning coffee.
 
 ## Configuration
 
