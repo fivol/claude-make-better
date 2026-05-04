@@ -1,7 +1,7 @@
 ---
-description: One-command Make Better — auto-decides between bootstrap, refresh, or review-only based on registry state. Orchestrates /systems-discover and /systems-review.
-argument-hint: "[count] [subsystem] [--no-discover|--rebuild|--discover-only] [--yes]"
-allowed-tools: ["Bash", "Read", "Skill", "AskUserQuestion"]
+name: make-better
+description: "One-command Make Better — auto-decides between bootstrap, refresh, or review-only based on registry state. Orchestrates /systems-discover and /systems-review. Flags: [count] [subsystem] [--no-discover|--rebuild|--discover-only] [--yes]"
+disable-model-invocation: false
 ---
 
 You are running the `/make-better` orchestrator. Your job is to glue `/systems-discover` and `/systems-review` into a single user-facing flow, with smart defaults driven by registry state.
@@ -27,10 +27,10 @@ If both `--no-discover` and `--rebuild` were passed, stop with: "These flags are
 
 ## Step 2 — Load configuration
 
-Run:
+Run the systems-review loader (it exposes the same merged config keys we need):
 
 ```bash
-bash ${CLAUDE_PLUGIN_ROOT}/skills/systems-review/bin/load-config.sh
+bash ${CLAUDE_SKILL_DIR}/../systems-review/bin/load-config.sh
 ```
 
 The output is a single merged JSON object. From it you need:
