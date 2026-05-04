@@ -1,0 +1,26 @@
+{
+  "registry_path": "docs/SYSTEMS.md",
+  "user_language": "en",
+  "review_stale_after_days": 14,
+  "default_systems_per_run": 3,
+  "max_systems_per_run": 8,
+  "max_parallel_review_agents": 4,
+  "max_parallel_implement_agents": 2,
+  "topic_agent_model": "sonnet",
+  "review_agent_model": "opus",
+  "implement_agent_model": "opus",
+  "lockfile_dir": "docs",
+  "stale_lockfile_after_hours": 3,
+  "branch_prefix": "systems-review",
+  "topics_required": [
+    "bugs",
+    "completeness",
+    "dry",
+    "architecture",
+    "consistency",
+    "efficiency",
+    "tests",
+    "docs-sync"
+  ],
+  "topics_optional": ["security"]
+}

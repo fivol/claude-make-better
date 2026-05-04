@@ -1,0 +1,32 @@
+{
+  "registry_path": "docs/SYSTEMS.md",
+  "max_parallel_scan_agents": 8,
+  "scan_agent_model": "opus",
+  "main_agent_model": "opus",
+  "lockfile_path": "docs/.systems-discover.lock",
+  "subsystem_detection": {
+    "ignore_dirs": [
+      "node_modules",
+      "dist",
+      "build",
+      ".git",
+      "coverage",
+      ".next",
+      "out",
+      "target",
+      "__pycache__"
+    ],
+    "min_files_in_subsystem": 5
+  },
+  "doc_hint_paths": [
+    "docs/AGENT_MAP",
+    "docs/CONTRACTS",
+    "docs/PRODUCT",
+    "README.md"
+  ],
+  "system_size_hints": {
+    "typical_min_files": 1,
+    "typical_max_files": 15,
+    "split_threshold_files": 25
+  }
+}

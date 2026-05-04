@@ -1,0 +1,339 @@
+---
+name: systems-discover
+description: "Companion to /systems-review. Builds and maintains docs/SYSTEMS.md by scanning the codebase, proposing systems grouped into sections, and merging cross-cutting systems across subsystems. Three modes: incremental (default), scoped by area, and --rebuild. Plan mode shows a compact list of system names for review/iteration before writing. Invoke as /systems-discover [--rebuild] [<area>]."
+disable-model-invocation: false
+---
+
+You are the main agent for the `/systems-discover` skill. The user invoked you to build or update `docs/SYSTEMS.md` — the registry consumed by `/systems-review`. Follow this flow exactly.
+
+## Spec
+Full design at `docs/superpowers/specs/2026-04-29-systems-discover-design.md`. Read it if any step is ambiguous.
+
+## Inputs
+
+User input is in `$ARGUMENTS`. Parse:
+- If the token `--rebuild` appears anywhere, set `mode = "rebuild"`. Otherwise `mode = "incremental"`.
+- Remove `--rebuild` from the arguments. Whatever remains (joined with spaces) is the optional `<area>` filter.
+- If nothing remains, `area = null` (full repo).
+
+Examples:
+- (empty) → `mode=incremental`, `area=null`
+- `flutter` → `mode=incremental`, `area="flutter"`
+- `--rebuild` → `mode=rebuild`, `area=null`
+- `--rebuild auth` or `auth --rebuild` → `mode=rebuild`, `area="auth"`
+
+## Configuration
+Load `.claude/skills/systems-discover/config.json`. All knobs come from there.
+
+## Phase 0 — Bootstrap
+
+### 0.1 Acquire lockfile
+Read `<lockfile_path>` (default `docs/.systems-discover.lock`). If it exists and its `pid` is alive (`ps -p <pid> >/dev/null 2>&1` succeeds), stop with:
+
+> "Another /systems-discover is already running (pid <pid>, started <when>). Wait for it to finish or remove the lockfile if you're sure it crashed."
+
+If the lockfile exists but `pid` is dead, prompt the user once: "Found stale lockfile from <when>, pid <pid> not running. Remove? (y/n)". On `y`, delete and continue. On `n`, exit.
+
+If no lockfile, write yours:
+
+```json
+{
+  "started_at": "<ISO 8601 UTC>",
+  "pid": <current pid>,
+  "mode": "<mode>",
+  "scope": "<area or empty>"
+}
+```
+
+Wrap the rest of the run in try/finally semantics: delete the lockfile on every exit path (success, abort, exception).
+
+### 0.2 Read existing registry
+If `<registry_path>` exists, read it. Parse:
+- **Frontmatter** (lines between two `---` delimiters at the very top): YAML with at least `last_discovered_by_section`. Default to `{}` if missing or malformed (treat as "no section ever swept").
+- **Body** (after frontmatter): same parsing rules as `/systems-review`:
+  - `## <name>` → section.
+  - `### <name>` → system, attached to current section.
+  - `- key: value` under a system → field.
+  - `- value` under a previously seen `- areas:` → append to that system's areas list.
+  - Other lines under a system → ignored (preserve as-is when writing).
+
+Result: ordered list of `{ section, name, last_review, status, blocker, areas, notes }` plus `frontmatter.last_discovered_by_section`.
+
+If `<registry_path>` does not exist, treat as empty registry with no frontmatter timestamps.
+
+### 0.3 Read doc hints
+For each entry in `doc_hint_paths`, read what's there. Missing files are fine — collect what exists. The combined text is `doc_hints` passed to scan agents.
+
+### 0.4 Detect candidate subsystems
+List directories one level deep at the repo root. For each directory:
+- Skip if name matches any entry in `subsystem_detection.ignore_dirs`.
+- Skip if it is a hidden directory (`.git`, `.claude`, `.vscode`).
+- Count files recursively (excluding ignored dirs). If `< min_files_in_subsystem`, skip.
+
+Result: list of candidate subsystem roots with their names.
+
+### 0.5 Apply `<area>` filter (if provided)
+For each candidate subsystem, decide if it semantically matches `<area>`:
+- Exact directory name match (`flutter` vs `app/`? Use AGENT_MAP doc hints: `docs/AGENT_MAP/flutter.md` or `app.md` says this is the Flutter app).
+- Section-name match in existing registry (`<area>` matches an existing section name → include subsystems whose existing systems live in that section).
+- Free-text match in directory name, top-level README, or doc hints.
+
+Be generous (same matching style as `/systems-review`'s subsystem filter). Drop subsystems that don't match.
+
+If after filtering no subsystem remains, exit cleanly: "No subsystems matched filter `<area>`. Nothing to do."
+
+### 0.6 Status line
+Print a one-line status:
+
+> "Discover sweep starting. Mode: <mode>. Scope: <area or 'all subsystems'>. Subsystems to scan: <comma-separated names>. Lockfile: <path>."
+
+## Phase 1 — Per-subsystem scan (parallel)
+
+For each candidate subsystem, dispatch a scan agent in parallel via the Agent tool. Cap concurrency at `max_parallel_scan_agents`.
+
+For each scan agent:
+- `subagent_type`: `general-purpose`
+- `model`: `<scan_agent_model>` (default `opus`)
+- prompt: contents of `.claude/skills/systems-discover/prompts/scan-agent.md` plus:
+  - `subsystem_root` (absolute path)
+  - `subsystem_name`
+  - `mode`
+  - `existing_systems`: filter `existing_systems` to those whose `areas:` overlap this subsystem (any path under `<subsystem_root>`)
+  - `incremental_since`: in `incremental` mode, the minimum of `last_discovered_by_section` for sections containing systems that overlap this subsystem (or `1970-01-01` if no such systems exist). In `rebuild` mode, this is irrelevant — the agent considers every file.
+  - `doc_hints`
+  - `size_hints` (from config)
+  - `methodology_overrides`: empty initially. May be set during Phase 4 iteration.
+
+Wait for all scan agents to return. Collect `{ subsystem, proposed_new, areas_patches, notes_appends, covered_existing }` per agent.
+
+## Phase 2 — Cross-cutting merge
+
+Use `prompts/main-merge.md` as guidance. Operate over the union of all scan agents' `proposed_new` lists.
+
+After merge, your in-memory state is:
+
+```
+proposed_systems: [
+  { name, section, areas, notes, marker: "NEW" | "REBUILT", preserved_from_existing: null | {...} }
+]
+areas_patches: [ { existing_system_name, new_areas, reason } ]
+notes_appends: [ { existing_system_name, append } ]
+```
+
+### Rebuild + name preservation
+In `rebuild` mode, for each `proposed_systems` entry whose name matches an `existing_systems` entry (within scope), set `marker = "REBUILT"` and `preserved_from_existing = { name, last_review, status, blocker }`. The body fields (`areas`, `notes`) come from the proposal; the review fields are carried over from the existing entry.
+
+If a `rebuild` proposal does not match any existing name but has ≥80% `areas` overlap with an existing system in scope, treat as a rename: in plan mode show the system as `<new name> (renamed from <old name>)` so the user can explicitly approve losing the existing review history (or rename the proposal back).
+
+## Phase 3 — Diff against existing registry
+
+Skip systems that are already in the registry **and** were not in scope for rebuild:
+- For each `proposed_systems` entry: if its `name` matches an existing system AND `mode == "incremental"`, drop it (it is already present; we are not double-adding).
+- If its name matches AND `mode == "rebuild"` AND existing system is in scope, keep with `marker: "REBUILT"`.
+- If no name match, keep as `marker: "NEW"`.
+
+For each system existing in the registry within scope:
+- If at least one scan agent listed it in `covered_existing`, it is verified. Apply any `areas_patches` and `notes_appends` directed at it.
+- If no scan agent saw it AND `mode == "rebuild"`, drop it (rebuild within scope replaces).
+- If no scan agent saw it AND `mode == "incremental"`, leave it alone. Do not auto-remove. (`/systems-review` will catch it via the `system_removed` verdict if its files are truly gone.)
+
+## Phase 4 — Plan mode
+
+Build the plan list:
+
+```md
+# /systems-discover plan
+Mode: <mode> | Scope: <area or 'all'>
+
+## <Section A> (<N new>, <M patched>)
+- <System name>                           NEW
+- <System name>                  areas patched
+- ...
+
+## <Section B> (<N new>, <M patched>, <K rebuilt>)
+- <System name>                       REBUILT
+- ...
+```
+
+Markers right-aligned (or however looks clean). Sections only appear if they have at least one entry to show.
+
+For systems with `cross_cutting_hint` confirmed via merge, the name itself includes the parenthetical (e.g., `(web → server)`) — no extra column needed.
+
+For renamed systems (rebuild), append `(renamed from <old>)` after the name.
+
+Enter plan mode (or its equivalent — present the document for approval).
+
+### User actions
+
+| User action | Main agent response |
+|---|---|
+| `approve` / `execute` / `go` / `yes` | Proceed to Phase 5. |
+| `show <system>` | Print `areas:`, `notes:`, and (if applicable) `preserved_from_existing` for that system. Stay in plan mode. |
+| `show areas` | Print every proposed system with full `areas:`. Stay in plan mode. |
+| `drop <system>` | Remove from `proposed_systems`. Show updated list. |
+| `rename <X> to <Y>` | Apply rename; if `Y` collides with another proposal, suffix with subsystem; show updated list. |
+| `split <X> into <A> and <B>` | Re-dispatch one scan agent for the subsystem(s) covered by X's areas with `methodology_overrides` instructing a split. Replace X with the new proposals. |
+| `merge <X> and <Y>` | Combine `areas` and `notes`, pick a merged name following conventions, drop X and Y, add the merged. |
+| `you forgot <hint>` (e.g., `you forgot the snapshot merger`) | Re-dispatch one scan agent against the most relevant subsystem with `methodology_overrides: "Look specifically for: <hint>"`. Add anything new it returns. |
+| `make systems smaller in <section>` / `make larger` / `treat <X> as one system` | Re-dispatch the relevant scan agents with `methodology_overrides` reflecting the user's instruction. Replace those sections' proposals with the new output. |
+| `cancel` / `abort` / `no` | Skip Phase 5. Lockfile is still released in cleanup. Nothing is written. |
+
+Iterate until the user approves or aborts.
+
+## Phase 5 — Write registry (progressive, with visible per-section / per-system progress)
+
+The user must see progress while writing. Do NOT compose the entire file in memory and dump it at the end — that gives no feedback during what can be a long write. Instead, write **section by section, system by system**, applying each change directly to `<registry_path>` and printing what you are doing.
+
+### 5.1 Re-read for race resolution
+Re-read `<registry_path>` immediately before writing. If it changed since Phase 0.2 (any field other than what discover changed):
+- Capture the current `last_review`, `status`, `blocker` for every system that survives both reads. Use the current values when writing.
+- If `/systems-review` deleted a system mid-run (`system_removed`), do NOT re-add it (it is not in `proposed_systems` anyway, since discover only proposes for things not in the registry at start).
+- If `/systems-review` patched `areas:` mid-run via `areas_corrections`, prefer discover's patch (newer information about file layout).
+
+### 5.2 Plan the write order
+
+From `proposed_systems`, `areas_patches`, and `notes_appends` build an ordered work list grouped by section:
+
+```
+sections_to_write: [
+  {
+    section: "Auth",
+    is_new_section: false,           // true if section doesn't exist in registry yet
+    systems: [
+      { kind: "NEW",     name: "...", areas: [...], notes: "..." },
+      { kind: "REBUILT", name: "...", areas: [...], notes: "...", preserved: {...} },
+      { kind: "PATCH",   name: "...", new_areas: [...], reason: "..." },
+      { kind: "NOTES",   name: "...", append: "..." },
+      { kind: "REMOVE",  name: "..." },        // rebuild only
+    ]
+  },
+  ...
+]
+```
+
+Section ordering:
+- Existing sections in their current order.
+- Then new sections appended at the end, in the order they first appeared in scan results.
+
+System ordering within a section:
+- Existing systems (touched by PATCH / NOTES / REMOVE) in their current registry order.
+- New systems (NEW / REBUILT) inserted alphabetically among them.
+
+If `<registry_path>` doesn't yet exist, scaffold it first with this content (then proceed to section writes):
+
+```md
+---
+last_discovered_by_section: {}
+---
+
+# Systems Registry
+
+Treeno systems registry for automated review (`/systems-review`).
+Maintained by humans + `/systems-discover` + `/systems-review`.
+```
+
+### 5.3 Write section by section, system by system
+
+For each entry in `sections_to_write`, in order:
+
+1. **Print the section heading** to the user (so they see what is being worked on right now):
+
+   ```
+   📁 Auth (3 new, 1 patched)
+   ```
+
+2. **If `is_new_section: true`,** append the section heading (`## <Section>`) to the registry now (immediately after the last existing section, or at end of file). One Edit call, before any system in this section.
+
+3. **For each system in this section's `systems` list, in order:**
+
+   a. **Print one progress line:**
+
+   ```
+      + <system name>             [NEW]
+      + <system name>             [REBUILT]
+      ~ <system name>             [areas patched]
+      ~ <system name>             [notes appended]
+      − <system name>             [REMOVED]
+   ```
+
+   b. **Apply this single change to the registry file** (one Edit operation per system; the user sees one tool call per system). Specifically:
+
+   | kind | What to do |
+   |---|---|
+   | `NEW` | Insert the `### <name>` block at the alphabetically correct position within the section. Body has `areas:` and `notes:`. No `last_review` / `status` / `blocker`. |
+   | `REBUILT` | Find the existing `### <name>` (if any) and replace its `areas:` and `notes:` blocks with the new ones. Preserve `last_review` / `status` / `blocker` from `preserved`. If no existing block (rebuild produced new name), insert as for `NEW` then add `last_review` / `status` / `blocker` from `preserved`. |
+   | `PATCH` | Find the existing `### <name>` and replace its `- areas:` block with `new_areas`. Touch nothing else. |
+   | `NOTES` | Find the existing `### <name>` and append `; <append>` to the `notes:` value. If `notes:` is missing, add it. |
+   | `REMOVE` (rebuild only) | Delete the entire `### <name>` block (heading + all bullets) from the section. |
+
+   c. Move to the next system. Do NOT batch — each system is one Edit so the user sees per-system progress.
+
+4. **After all systems in this section are written, update the section's `last_discovered_by_section[<Section>]` in the frontmatter** to today's date. This is one extra Edit per visited section.
+
+5. **Move to the next section.**
+
+### 5.4 Commit
+
+After the entire ordered work list is applied, single commit:
+
+```bash
+git add docs/SYSTEMS.md
+git commit -m "chore(systems): discover sweep — <N> new, <M> patched, <K> rebuilt (<area or full>)"
+```
+
+The exact numbers come from totals across `sections_to_write`.
+
+### 5.5 Release lockfile
+
+`rm <lockfile_path>`. Always. Even on Phase 5 failure (cleanup keeps any partial writes already committed; the registry is still in a valid state because each Edit was atomic and parser-compatible).
+
+## Phase 6 — Final report
+
+Print:
+
+```
+✅ Discover sweep complete.
+
+Mode: <mode> | Scope: <area or 'all'>
+
+📦 New systems: <count>
+   <Section>
+     - <System name>
+     - ...
+
+🔧 areas: patched: <count>
+   - <System name> — <reason>
+   - ...
+
+📝 notes: appended: <count>
+   - <System name> — <one-line>
+   - ...
+
+🧱 Rebuilt sections: <count>            (only when mode == rebuild)
+   - <Section> (<old N> systems → <new M> systems)
+   - ...
+
+📅 Sections updated: <comma-separated names with their new last_discovered>
+
+Registry: docs/SYSTEMS.md (1 commit). Run `git push` when ready.
+```
+
+Skip empty buckets.
+
+## Cleanup guarantees
+
+On ANY exit (success, abort, exception):
+1. Delete your own lockfile.
+2. If you wrote `<registry_path>.tmp` but did not move it, remove the temp file.
+3. Leave any in-memory state behind; the next invocation starts fresh.
+
+## Models
+- You (main agent): your own model.
+- Scan agents: `<scan_agent_model>` (opus by default).
+
+## Files referenced
+- `.claude/skills/systems-discover/config.json` — all defaults.
+- `.claude/skills/systems-discover/prompts/scan-agent.md` — scan agent prompt.
+- `.claude/skills/systems-discover/prompts/main-merge.md` — cross-cutting merge guidance.
+- `docs/SYSTEMS.md` — the registry being maintained.
+- `docs/.systems-discover.lock` — runtime lockfile (gitignored).
