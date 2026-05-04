@@ -8,16 +8,20 @@ You are the main agent for the `/systems-review` skill. The user invoked you to 
 
 ## Inputs
 
-User input is in `$ARGUMENTS`. Parse:
-- The first numeric token is `count`.
-- All other tokens (joined) are the `subsystem` filter.
-- Either or both may be absent.
+User input is in `$ARGUMENTS`. Parse in this order:
+
+1. Detect flags (any position): `--yes`, `-y`, `--auto` → set `non_interactive = true`. Strip them from the token list.
+2. The first remaining numeric token → `count`.
+3. All other remaining tokens (joined) → `subsystem` filter.
+4. Either `count` or `subsystem` may be absent. Default `non_interactive = false`.
 
 Examples:
-- `8` → count=8, subsystem=none
-- `flutter` → count=default, subsystem="flutter"
-- `flutter 4` → count=4, subsystem="flutter"
-- (empty) → count=default, subsystem=none
+- `8` → count=8, subsystem=none, non_interactive=false
+- `flutter` → count=default, subsystem="flutter", non_interactive=false
+- `flutter 4` → count=4, subsystem="flutter", non_interactive=false
+- `--yes 5 flutter` → count=5, subsystem="flutter", non_interactive=true
+- `-y` → count=default, subsystem=none, non_interactive=true
+- (empty) → count=default, subsystem=none, non_interactive=false
 
 ## Configuration
 Load the merged config by running:
@@ -32,6 +36,21 @@ Apply user `count` only if it is `<= max_systems_per_run`; otherwise clamp and i
 
 ### User-facing language
 The config has a `user_language` field (default `"en"`). Render **every user-facing message** in this language: status lines, plan mode content, AskUserQuestion prompts and option labels, the final report, error messages. The instructions in this skill, JSON shapes exchanged with sub-agents, commit messages, branch names, and code stay in English regardless. Translate only what the user reads.
+
+## Non-interactive mode (`--yes`)
+
+When `non_interactive` is true (set via `--yes` / `-y` / `--auto`), every step below that would normally pause for user input must instead resolve automatically. The rules:
+
+1. **Plan mode (Phase 2):** skip entirely. Do not enter plan mode, do not call `AskUserQuestion`, do not show the "approve / modify / cancel" UI. Treat the computed plan as approved-as-is and proceed straight to Phase 3 (implementation).
+2. **Stale peer lockfiles (0.4):** auto-delete and log one line: `auto-removed stale lockfile <name> (started_at <ts>) due to --yes`. Do not prompt.
+3. **Any other `AskUserQuestion`** (merge conflict ambiguity in 3.5, ambiguous failure in Phase 4, anywhere else):
+   - If there is a documented safe default for that question, pick it and log: `auto-picked "<option>" because of --yes`.
+   - If there is no safe default, **skip the affected unit of work** (the system, the section, whatever is at hand): mark its `status` in your in-memory plan as `skipped_for_human`, attach the question text and any relevant context as `blocker`, and continue with the rest. Do **not** stamp `last_review` for skipped systems.
+4. **Hard errors are still hard.** Missing registry, dead lockfile that you can't safely remove, broken config — these still abort. `--yes` only suppresses *prompts that have an answer the agent can produce*.
+5. **`status: needs_user_decision` systems are still skipped from the candidate pool**, regardless of `--yes`. Auto-mode does not retroactively decide what humans previously deferred.
+6. **Final report (Phase 5):** add a `Skipped — human decision needed` section listing every system or sub-step that was deferred because there was no safe default. The user reviews this section after the unattended run.
+
+If `non_interactive` is false (default), every prompt and plan mode behaves as documented in the rest of this skill.
 
 ## Phase 0 — Bootstrap
 

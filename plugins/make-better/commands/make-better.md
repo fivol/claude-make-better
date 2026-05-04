@@ -1,6 +1,6 @@
 ---
 description: One-command Make Better — auto-decides between bootstrap, refresh, or review-only based on registry state. Orchestrates /systems-discover and /systems-review.
-argument-hint: "[count] [subsystem] [--no-discover|--rebuild|--discover-only]"
+argument-hint: "[count] [subsystem] [--no-discover|--rebuild|--discover-only] [--yes]"
 allowed-tools: ["Bash", "Read", "Skill", "AskUserQuestion"]
 ---
 
@@ -15,10 +15,11 @@ Tokens may appear in any order. Process tokens left-to-right:
 - `--no-discover` → set `skip_discover = true` (run review only)
 - `--rebuild` → set `force_full_discover = true` (force a full re-discovery before review)
 - `--discover-only` → set `skip_review = true` (run discovery only, no review)
+- `--yes` / `-y` / `--auto` → set `non_interactive = true` (no prompts, no plan mode — agent runs to completion unattended)
 - The first remaining numeric token → `count` (how many systems to review)
 - All other remaining tokens, joined by space → `subsystem` filter
 
-Defaults: `skip_discover=false`, `force_full_discover=false`, `skip_review=false`, `count=null`, `subsystem=null`.
+Defaults: `skip_discover=false`, `force_full_discover=false`, `skip_review=false`, `non_interactive=false`, `count=null`, `subsystem=null`.
 
 If both `--no-discover` and `--discover-only` were passed, stop with: "These flags are mutually exclusive — pick one."
 
@@ -85,21 +86,25 @@ Do not ask for confirmation. Proceed directly.
 
 ## Step 6 — Execute discover phase (if any)
 
-If `discover_phase` is not `none`, invoke the **systems-discover** skill via the `Skill` tool. Build its `args` like this:
+If `discover_phase` is not `none`, invoke the **systems-discover** skill via the `Skill` tool. Build its `args` by joining the relevant tokens with spaces:
 
-- `incremental` → args = `subsystem` (or empty if none)
-- `full` → args = `--rebuild ` + `subsystem` (or `"--rebuild"` if no subsystem)
+- Add `--rebuild` if `discover_phase == "full"`
+- Add `--yes` if `non_interactive`
+- Add `subsystem` if it's set
+
+Examples: `"--rebuild --yes flutter"`, `"--yes"`, `"flutter"`, `""`.
 
 Wait for the skill to complete. If it errored, stop and report.
 
 ## Step 7 — Execute review phase (if any)
 
-If `review_phase` is `review`, invoke the **systems-review** skill via the `Skill` tool. Build its `args` like this:
+If `review_phase` is `review`, invoke the **systems-review** skill via the `Skill` tool. Build its `args` by joining the relevant tokens with spaces:
 
-- If both `count` and `subsystem` are set: `"<count> <subsystem>"`
-- Else if only `count`: `"<count>"`
-- Else if only `subsystem`: `"<subsystem>"`
-- Else: empty string
+- Add `--yes` if `non_interactive`
+- Add `count` if set
+- Add `subsystem` if set
+
+Examples: `"--yes 5 flutter"`, `"5"`, `"flutter"`, `""`.
 
 Wait for the skill to complete.
 
@@ -109,6 +114,7 @@ In `user_language`, print one combined summary:
 - Which phases ran.
 - Discovery delta (if discover ran): how many systems added/removed/unchanged. Get this from the discover skill's own report.
 - Review findings (if review ran): the per-topic counts and total. Get this from the review skill's own report.
+- **If `non_interactive` was set:** explicitly list every system or proposal flagged as "skipped — human decision needed" by the sub-skills, so the user can address them on their next interactive run.
 - Where to look next: relevant branches, PRs, the registry file.
 
-Keep it tight — under 12 lines.
+Keep it tight — under 15 lines.

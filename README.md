@@ -39,6 +39,7 @@ You can pass arguments to control how many systems get reviewed and which area:
 - `--no-discover` — skip the discover phase, go straight to review (use when you've already discovered recently)
 - `--rebuild` — force a full re-discovery before review (use after a major refactor)
 - `--discover-only` — refresh the registry but don't review anything
+- `--yes` (`-y`, `--auto`) — fully autonomous: no plan mode, no prompts, runs to completion. Required for cron / `/schedule`. See [Unattended runs](#unattended-runs--yes) below.
 
 ## What it actually does
 
@@ -87,12 +88,31 @@ Each finding lands as a separate, reviewable commit on a `systems-review/<system
 
 A codebase rots in a thousand tiny ways no single PR review will catch: an enum gained a value but one switch was missed, a util got duplicated in three places, a doc went out of sync with the API, a test stopped covering anything meaningful. Make Better is a structured way to keep paying down that rot without making it your day job.
 
+## Unattended runs (`--yes`)
+
+By default, both phases pause for review — `/systems-discover` shows the proposed registry in plan mode, `/systems-review` shows a per-system plan and waits for approval. That's the right behavior when you're at the keyboard.
+
+For cron, `/schedule`, and any other unattended use, pass `--yes`:
+
+```
+/make-better --yes 5
+```
+
+What changes:
+
+- **Plan mode is skipped.** The agent runs the computed plan as-is.
+- **Stale lockfiles are auto-removed** with a log line.
+- **Ambiguous decisions don't block.** When the agent would normally ask a question, it picks the safe default if there is one. If there's no safe default, it **skips the affected system** (or proposal in discover) and lists it under `Skipped — human decision needed` in the final report.
+- **Hard errors still abort.** Missing config, broken registry, no read access — these stop the run and surface as failures.
+
+Fixes still land on isolated `systems-review/<system>` branches — nothing gets force-merged into your work. Read the branches and the skipped-systems list before merging anything.
+
 ## Set it and forget it
 
 Pair `/make-better` with a schedule for hands-off maintenance:
 
 ```
-/schedule create "0 9 * * 1" /make-better 5
+/schedule create "0 9 * * 1" /make-better --yes 5
 ```
 
 Every Monday at 9am: 5 stale systems reviewed, fixes proposed on branches, ready for your morning coffee.

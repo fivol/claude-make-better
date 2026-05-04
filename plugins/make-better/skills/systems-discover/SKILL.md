@@ -8,16 +8,18 @@ You are the main agent for the `/systems-discover` skill. The user invoked you t
 
 ## Inputs
 
-User input is in `$ARGUMENTS`. Parse:
-- If the token `--rebuild` appears anywhere, set `mode = "rebuild"`. Otherwise `mode = "incremental"`.
-- Remove `--rebuild` from the arguments. Whatever remains (joined with spaces) is the optional `<area>` filter.
-- If nothing remains, `area = null` (full repo).
+User input is in `$ARGUMENTS`. Parse in this order:
+
+1. Detect flags (any position): `--yes`, `-y`, `--auto` → set `non_interactive = true`. `--rebuild` → set `mode = "rebuild"`. Strip these flags from the token list. Default `mode = "incremental"`, `non_interactive = false`.
+2. Whatever remains (joined with spaces) → optional `<area>` filter. If nothing remains, `area = null` (full repo).
 
 Examples:
-- (empty) → `mode=incremental`, `area=null`
-- `flutter` → `mode=incremental`, `area="flutter"`
-- `--rebuild` → `mode=rebuild`, `area=null`
-- `--rebuild auth` or `auth --rebuild` → `mode=rebuild`, `area="auth"`
+- (empty) → `mode=incremental`, `area=null`, `non_interactive=false`
+- `flutter` → `mode=incremental`, `area="flutter"`, `non_interactive=false`
+- `--rebuild` → `mode=rebuild`, `area=null`, `non_interactive=false`
+- `--rebuild auth` or `auth --rebuild` → `mode=rebuild`, `area="auth"`, `non_interactive=false`
+- `--yes` → `mode=incremental`, `area=null`, `non_interactive=true`
+- `--rebuild --yes flutter` → `mode=rebuild`, `area="flutter"`, `non_interactive=true`
 
 ## Configuration
 Load the merged config by running:
@@ -27,6 +29,20 @@ bash ${CLAUDE_SKILL_DIR}/bin/load-config.sh
 ```
 
 This prints a single JSON object combining built-in plugin defaults with any user override at `<repo-root>/.claude/make-better.config.json`. All knobs come from this object. Do not read any config file directly — always go through the loader.
+
+## Non-interactive mode (`--yes`)
+
+When `non_interactive` is true, every step below that would normally pause for user input must instead resolve automatically. The rules:
+
+1. **Plan mode (Phase 4):** skip entirely. Do not enter plan mode, do not show the document for approval. Treat the proposed registry as approved-as-is and proceed straight to writing the file.
+2. **Stale lockfile (0.1):** auto-delete and log: `auto-removed stale lockfile (started_at <ts>) due to --yes`. Do not prompt.
+3. **Any other `AskUserQuestion`** (cross-cutting merge ambiguity, rename approval, etc.):
+   - If there is a documented safe default, pick it and log: `auto-picked "<option>" because of --yes`. For renames, the safe default is "treat as a new system" (preserves the existing entry's review history under its old name; the new proposal stays separate).
+   - If there is no safe default, **skip the affected proposal**: do not write that single system into the registry, log it under "Skipped — human decision needed", and continue with the rest of the registry.
+4. **Hard errors are still hard.** Live peer run with active lockfile, broken config, missing read access — these still abort. `--yes` only suppresses *prompts that have an answer the agent can produce*.
+5. **Final report (Phase 5):** add a `Skipped — human decision needed` section listing every proposal that was deferred. The user reviews it after the unattended run.
+
+If `non_interactive` is false (default), every prompt and plan mode behaves as documented in the rest of this skill.
 
 ## Phase 0 — Bootstrap
 
