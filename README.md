@@ -119,7 +119,18 @@ Every Monday at 9am: 5 stale systems reviewed, fixes proposed on branches, ready
 
 ## Configuration
 
-Both skills read defaults from the installed plugin and merge in any project-local overrides at `<repo-root>/.claude/make-better.config.json`. Drop that file in your repo to customize without touching the plugin.
+Both skills read defaults from the installed plugin and merge in any project-local overrides at `<repo-root>/.claude/make-better/config.json`. Everything you customize for Make Better lives under `.claude/make-better/`:
+
+```
+.claude/
+└── make-better/
+    ├── config.json              # overrides
+    └── topics/                  # optional — custom or shadowed review topics
+        ├── perf-budget.md
+        └── bugs.md              # shadows the built-in bugs.md
+```
+
+Drop the file in your repo to customize without touching the plugin.
 
 The skill itself runs `bash ${CLAUDE_SKILL_DIR}/bin/load-config.sh` (or `${CLAUDE_PLUGIN_ROOT}/skills/<skill>/bin/load-config.sh` from a slash command) which prints the merged config as JSON — no need to think about merging yourself.
 
@@ -189,6 +200,79 @@ Every key is optional. Anything you don't specify falls back to the plugin's def
 { "discover": { "subsystem_detection": { "ignore_dirs": ["node_modules", ".git", "vendor"] } } }
 ```
 
+## Custom review topics
+
+Out of the box, `/systems-review` audits each system across 9 built-in topics (bugs, dry, architecture, etc.). You can add your own — domain-specific perf budgets, accessibility, i18n coverage, security policies, anything you want flagged on every review.
+
+### Add a topic in two steps
+
+**1. Create the prompt** at `<repo-root>/.claude/make-better/topics/<name>.md`. Use the built-in topics as templates — see [bugs.md](plugins/make-better/skills/systems-review/topics/bugs.md) for the canonical structure.
+
+Minimal shape:
+
+```markdown
+---
+name: perf-budget
+required: true
+---
+
+# Perf Budget
+
+## What to look for
+- Functions with O(n²) work where n is unbounded user input.
+- Synchronous calls in hot paths that could be batched or cached.
+- Allocations inside tight loops.
+
+## What NOT to look for
+- General optimization → handled by `efficiency`.
+- Algorithmic redesigns → architecture.
+
+## Output format
+Return a JSON array. Each entry:
+{
+  "file": "path/to/file.ts",
+  "line": 42,
+  "issue": "short description",
+  "severity": "high" | "medium" | "low",
+  "fix": "what should change"
+}
+```
+
+The topic agent receives the system's areas, your prompt, and standard context (repo root, git diff, etc.) — same machinery the built-ins use.
+
+**2. Register it** in `.claude/make-better/config.json`:
+
+```json
+{
+  "review": {
+    "topics_required": ["bugs", "completeness", "dry", "architecture", "consistency", "efficiency", "tests", "docs-sync", "perf-budget"],
+    "topics_optional": ["security"]
+  }
+}
+```
+
+That's it. On the next `/systems-review`, a topic agent dispatches with your prompt and findings flow into the merged plan alongside built-in topics.
+
+### Shadowing a built-in
+
+Drop a file with the same name as a built-in (`.claude/make-better/topics/bugs.md`) — your version takes precedence. Useful when the built-in is too lax/strict for your codebase.
+
+### Resolution order
+
+For each name in `topics_required` ∪ `topics_optional`:
+
+1. `<repo-root>/.claude/make-better/topics/<name>.md` (user, wins)
+2. `${plugin}/skills/systems-review/topics/<name>.md` (built-in, fallback)
+3. **Neither found → `/systems-review` aborts** with a message telling you what file is missing. Either create it or drop the name from your config.
+
+### Debugging
+
+Run the loader directly to see what got resolved:
+
+```bash
+bash $(find ~/.claude/plugins -path "*/make-better/skills/systems-review/bin/load-config.sh" | head -1) | jq '._topics, ._unresolved_topics'
+```
+
 ## Advanced: separate phases
 
 `/make-better` covers the common case. For finer-grained control, the underlying commands are still available:
@@ -214,6 +298,8 @@ Use these directly when you want explicit control over which phase runs.
 
 ## Repo layout
 
+Plugin (this repo):
+
 ```
 claude-make-better/
 ├── .claude-plugin/
@@ -228,18 +314,25 @@ claude-make-better/
             ├── systems-discover/
             │   ├── SKILL.md
             │   ├── defaults.json
-            │   ├── bin/
-            │   │   ├── load-config.sh
-            │   │   └── load-config.py
+            │   ├── bin/                  ← load-config.{sh,py}
             │   └── prompts/
             └── systems-review/
                 ├── SKILL.md
                 ├── defaults.json
-                ├── bin/
-                │   ├── load-config.sh
-                │   └── load-config.py
+                ├── bin/                  ← load-config.{sh,py} + topic resolver
                 ├── prompts/
-                └── topics/
+                └── topics/               ← built-in topic prompts
+```
+
+Per-project user customization (in your repo):
+
+```
+<your repo>/
+└── .claude/
+    └── make-better/
+        ├── config.json                   ← optional override
+        └── topics/                       ← optional custom / shadowed topics
+            └── *.md
 ```
 
 ## Requirements

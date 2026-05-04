@@ -28,7 +28,7 @@ Load the merged config by running:
 bash ${CLAUDE_SKILL_DIR}/bin/load-config.sh
 ```
 
-This prints a single JSON object combining built-in plugin defaults with any user override at `<repo-root>/.claude/make-better.config.json`. All knobs come from this object. Do not read any config file directly — always go through the loader.
+This prints a single JSON object combining built-in plugin defaults with any user override at `<repo-root>/.claude/make-better/config.json`. All knobs come from this object. Do not read any config file directly — always go through the loader.
 
 ## Non-interactive mode (`--yes`)
 
@@ -113,7 +113,7 @@ For each candidate subsystem, dispatch a scan agent in parallel via the Agent to
 For each scan agent:
 - `subagent_type`: `general-purpose`
 - `model`: `<scan_agent_model>` (default `opus`)
-- prompt: contents of `.claude/skills/systems-discover/prompts/scan-agent.md` plus:
+- prompt: contents of `${CLAUDE_SKILL_DIR}/prompts/scan-agent.md` plus:
   - `subsystem_root` (absolute path)
   - `subsystem_name`
   - `mode`
@@ -351,8 +351,10 @@ On ANY exit (success, abort, exception):
 - Scan agents: `<scan_agent_model>` (opus by default).
 
 ## Files referenced
-- `.claude/skills/systems-discover/config.json` — all defaults.
-- `.claude/skills/systems-discover/prompts/scan-agent.md` — scan agent prompt.
-- `.claude/skills/systems-discover/prompts/main-merge.md` — cross-cutting merge guidance.
+- `${CLAUDE_SKILL_DIR}/defaults.json` — built-in defaults.
+- `${CLAUDE_SKILL_DIR}/bin/load-config.sh` — config loader.
+- `${CLAUDE_SKILL_DIR}/prompts/scan-agent.md` — scan agent prompt.
+- `${CLAUDE_SKILL_DIR}/prompts/main-merge.md` — cross-cutting merge guidance.
+- `<repo-root>/.claude/make-better/config.json` — optional user override.
 - `docs/SYSTEMS.md` — the registry being maintained.
 - `docs/.systems-discover.lock` — runtime lockfile (gitignored).

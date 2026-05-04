@@ -2,8 +2,8 @@
 """Print merged config (defaults + user override) for the systems-discover skill.
 
 Reads:
-  - <skill-dir>/defaults.json                         (built-in defaults)
-  - <repo-root>/.claude/make-better.config.json       (optional user override)
+  - <skill-dir>/defaults.json                          (built-in defaults)
+  - <repo-root>/.claude/make-better/config.json        (optional user override)
 
 Override file may be flat (applies to all skills) or have a "review" / "discover"
 section. Common top-level keys are merged first, then the skill-specific section.
@@ -34,7 +34,8 @@ try:
 except (subprocess.CalledProcessError, FileNotFoundError):
     repo_root = Path(os.getcwd())
 
-override_path = repo_root / ".claude" / "make-better.config.json"
+user_dir = repo_root / ".claude" / "make-better"
+override_path = user_dir / "config.json"
 override: dict = {}
 if override_path.exists():
     try:

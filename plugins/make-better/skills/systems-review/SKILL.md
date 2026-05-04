@@ -30,7 +30,7 @@ Load the merged config by running:
 bash ${CLAUDE_SKILL_DIR}/bin/load-config.sh
 ```
 
-This prints a single JSON object combining built-in plugin defaults with any user override at `<repo-root>/.claude/make-better.config.json`. All knobs (`registry_path`, `review_stale_after_days`, etc.) come from this object. Do not read any config file directly — always go through the loader.
+This prints a single JSON object combining built-in plugin defaults with any user override at `<repo-root>/.claude/make-better/config.json`. All knobs (`registry_path`, `review_stale_after_days`, etc.) come from this object. Do not read any config file directly — always go through the loader.
 
 Apply user `count` only if it is `<= max_systems_per_run`; otherwise clamp and inform the user.
 
@@ -128,7 +128,7 @@ For each picked system, dispatch a review agent in parallel via the Agent tool. 
 For each review agent:
 - `subagent_type`: `general-purpose`
 - `model`: `<review_agent_model>` (default `opus`)
-- prompt: contents of `.claude/skills/systems-review/prompts/review-agent.md` plus the system fields, the topic docs (read every `topics/*.md`), the topic lists, repo root, and today's date.
+- prompt: contents of `${CLAUDE_SKILL_DIR}/prompts/review-agent.md` plus the system fields, the topic docs (read each path listed in `_topics` from the loader output — see "Topic resolution" below), the topic lists, repo root, and today's date.
 
 Collect all returns. For each:
 - `verdict: "proceed"` → keep the system in the active set.
@@ -456,10 +456,24 @@ On ANY exit (success, abort, exception):
 - Implement agents: `<implement_agent_model>` (opus by default).
 - Topic agents: `<topic_agent_model>` (sonnet by default).
 
+## Topic resolution
+
+Topic prompts are resolved by the loader (`bin/load-config.sh`). The merged JSON includes:
+
+- `_topics` — map `{ "<name>": "<absolute path>" }` covering every topic listed in `topics_required` ∪ `topics_optional`. The loader checks `<repo-root>/.claude/make-better/topics/<name>.md` first, then falls back to `${CLAUDE_SKILL_DIR}/topics/<name>.md`. User files **shadow** built-ins of the same name.
+- `_unresolved_topics` — list of names that had no file in either location.
+
+**Before dispatching review agents:** if `_unresolved_topics` is non-empty, abort with: "Topic prompt(s) not found: `<names>`. Create the file(s) at `<repo-root>/.claude/make-better/topics/<name>.md` or remove from `topics_required`/`topics_optional`."
+
+When dispatching, always read prompt content from `_topics[<name>]` — never from a hardcoded path.
+
 ## Files referenced
-- `.claude/skills/systems-review/config.json` — all defaults.
-- `.claude/skills/systems-review/prompts/review-agent.md` — review agent prompt.
-- `.claude/skills/systems-review/prompts/implement-agent.md` — implement agent prompt.
-- `.claude/skills/systems-review/topics/*.md` — one file per topic.
+- `${CLAUDE_SKILL_DIR}/defaults.json` — built-in defaults.
+- `${CLAUDE_SKILL_DIR}/bin/load-config.sh` — config + topic resolver.
+- `${CLAUDE_SKILL_DIR}/prompts/review-agent.md` — review agent prompt.
+- `${CLAUDE_SKILL_DIR}/prompts/implement-agent.md` — implement agent prompt.
+- `${CLAUDE_SKILL_DIR}/topics/*.md` — built-in topic prompts.
+- `<repo-root>/.claude/make-better/config.json` — optional user override.
+- `<repo-root>/.claude/make-better/topics/*.md` — optional user topic prompts (shadow built-ins; new names extend the topic set).
 - `docs/SYSTEMS.md` — the registry (managed externally by `/systems-discover` and humans).
 - `docs/.systems-review.*.lock` — runtime lockfiles, gitignored.
