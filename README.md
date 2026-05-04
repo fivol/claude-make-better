@@ -89,24 +89,36 @@ Otherwise use `cron` with Claude Code's non-interactive mode (consult [Claude Co
 
 ## Configuration
 
-Drop a JSON file at `<repo-root>/.claude/make-better/config.json` to customize without touching the plugin:
+Drop a JSON file at `<repo-root>/.claude/make-better/config.json` to customize without touching the plugin. Every key is optional — anything missing falls back to plugin defaults.
 
-```jsonc
+The most useful knobs:
+
+- `registry_path` — where to keep the systems registry. Default: `docs/SYSTEMS.md`.
+- `review.user_language` — language for every user-facing message (`"en"`, `"ru"`, `"es"`, …). Default: `"en"`.
+- `review.review_stale_after_days` — re-audit a system after this many days. Default: `30`.
+- `review.default_systems_per_run` — how many systems to review when count isn't specified. Default: `3`.
+- `review.topics_required` — topics that always run on every system. Listing topics here **replaces** the default list — include built-ins you want to keep alongside your custom ones.
+- `review.topics_optional` — topics that run when applicable (currently just `security`). Same replace-not-merge semantics.
+
+Copy and edit:
+
+```json
 {
+  "registry_path": "docs/SYSTEMS.md",
   "review": {
-    "user_language": "ru",                 // user-facing messages in Russian
-    "review_stale_after_days": 7,          // re-audit weekly instead of bi-weekly
-    "default_systems_per_run": 5
-  },
-  "discover": {
-    "subsystem_detection": {
-      "ignore_dirs": ["node_modules", ".git", "vendor"]
-    }
+    "user_language": "en",
+    "review_stale_after_days": 30,
+    "default_systems_per_run": 3,
+    "topics_required": [
+      "bugs", "completeness", "dry", "architecture",
+      "consistency", "efficiency", "tests", "docs-sync"
+    ],
+    "topics_optional": ["security"]
   }
 }
 ```
 
-Every key is optional. Anything missing falls back to plugin defaults. Full schema and all knobs: **[docs/configuration.md](docs/configuration.md)**.
+Full schema (parallelism, model selection, ignore_dirs, doc hint paths, all the rest): **[docs/configuration.md](docs/configuration.md)**.
 
 ## Custom review topics
 

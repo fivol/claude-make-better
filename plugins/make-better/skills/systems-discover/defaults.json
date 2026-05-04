@@ -5,25 +5,10 @@
   "main_agent_model": "opus",
   "lockfile_path": "docs/.systems-discover.lock",
   "subsystem_detection": {
-    "ignore_dirs": [
-      "node_modules",
-      "dist",
-      "build",
-      ".git",
-      "coverage",
-      ".next",
-      "out",
-      "target",
-      "__pycache__"
-    ],
+    "ignore_dirs": [],
     "min_files_in_subsystem": 5
   },
-  "doc_hint_paths": [
-    "docs/AGENT_MAP",
-    "docs/CONTRACTS",
-    "docs/PRODUCT",
-    "README.md"
-  ],
+  "doc_hint_paths": [],
   "system_size_hints": {
     "typical_min_files": 1,
     "typical_max_files": 15,

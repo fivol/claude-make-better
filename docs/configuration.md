@@ -25,7 +25,7 @@ Every key is optional. Anything missing falls back to the plugin's default. Nest
   // -------- /systems-review-specific --------
   "review": {
     "user_language": "en",                // language for every user-facing message ("ru", "es", etc.)
-    "review_stale_after_days": 14,        // re-audit a system after this many days
+    "review_stale_after_days": 30,        // re-audit a system after this many days
 
     "default_systems_per_run": 3,         // count when not specified
     "max_systems_per_run": 8,             // upper bound; user-supplied counts get clamped
@@ -57,16 +57,11 @@ Every key is optional. Anything missing falls back to the plugin's default. Nest
     "lockfile_path": "docs/.systems-discover.lock",
 
     "subsystem_detection": {
-      "ignore_dirs": [
-        "node_modules", "dist", "build", ".git", "coverage",
-        ".next", "out", "target", "__pycache__"
-      ],
+      "ignore_dirs": [],                  // SUPPLEMENTARY to .gitignore — see "Discovery and gitignore" below
       "min_files_in_subsystem": 5
     },
 
-    "doc_hint_paths": [
-      "docs/AGENT_MAP", "docs/CONTRACTS", "docs/PRODUCT", "README.md"
-    ],
+    "doc_hint_paths": [],                 // project-specific docs to feed into scan agents — see below
 
     "system_size_hints": {
       "typical_min_files": 1,
@@ -76,6 +71,43 @@ Every key is optional. Anything missing falls back to the plugin's default. Nest
   }
 }
 ```
+
+## Discovery and gitignore
+
+`/systems-discover` enumerates files using `git ls-files --cached --others --exclude-standard`, so **everything in `.gitignore` is automatically skipped**. There's nothing to configure for the common case (`node_modules`, `dist`, `build`, `coverage`, `.next`, `__pycache__` — these all get gitignored anyway).
+
+`subsystem_detection.ignore_dirs` is a **supplementary** filter applied on top of gitignore. Use it for directories that ARE committed but you don't want audited as subsystems:
+
+```jsonc
+{
+  "discover": {
+    "subsystem_detection": {
+      "ignore_dirs": ["vendor", "third_party", "examples"]
+    }
+  }
+}
+```
+
+Default: empty list.
+
+## Doc hints (`doc_hint_paths`)
+
+Optional list of files or directories whose contents are passed as starting context to scan agents — places where your team has already documented architecture, modules, or feature areas. Examples:
+
+```jsonc
+{
+  "discover": {
+    "doc_hint_paths": [
+      "docs/architecture",
+      "docs/MODULES.md",
+      "ARCHITECTURE.md",
+      "README.md"
+    ]
+  }
+}
+```
+
+The paths are project-specific, so the default is an empty list — set them only if your project has docs worth feeding in. Missing files/dirs are silently skipped.
 
 ## Common overrides
 

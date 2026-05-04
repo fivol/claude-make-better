@@ -29,18 +29,26 @@ Default mode is **incremental**: only files changed since the last sweep (per se
 
 ### Phase 1 — Detect subsystems
 
-Walks top-level directories, applying `subsystem_detection.ignore_dirs` (default: `node_modules`, `dist`, `.git`, etc.). A subsystem is any directory with at least `min_files_in_subsystem` (default 5) files. Each becomes a parallel scan target.
+Enumerates files via `git ls-files --cached --others --exclude-standard`, then groups them by top-level directory. This automatically respects `.gitignore`, `.git/info/exclude`, and any nested gitignores — vendored deps, build output, generated files, anything you don't track gets skipped without configuration.
 
-If `<area>` is set, only matching subsystems are scanned.
+For each top-level directory:
+- Skip if name matches `subsystem_detection.ignore_dirs` (default: empty — supplementary filter for things that ARE committed but you don't want as subsystems, e.g. `vendor/`).
+- Skip if name starts with `.` (`.git`, `.claude`, `.vscode`).
+- Skip if file count `< min_files_in_subsystem` (default 5).
+
+Each surviving directory becomes a parallel scan target. If `<area>` is set, only matching subsystems are scanned.
+
+If the repo isn't a git repo, `/systems-discover` aborts cleanly with a clear message.
 
 ### Phase 2 — Scan (parallel)
 
 Dispatches one **scan agent** per subsystem (`max_parallel_scan_agents`, default 8). Each scan agent:
 
-1. Reads relevant doc hints (`doc_hint_paths` — default `docs/AGENT_MAP/`, `docs/CONTRACTS/`, `docs/PRODUCT/`, the subsystem's own README).
-2. In incremental mode: only considers files changed in git since `last_discovered_by_section[<this section>]` plus files not currently mapped to any existing system. In rebuild mode: every file under the root.
-3. Proposes systems with `{ name, areas, notes, preserved_from_existing? }`. Each system targets `system_size_hints` (default 1–15 files; split if >25).
-4. Returns structured JSON: `{ subsystem, proposed_new, areas_patches, notes_appends, covered_existing }`.
+1. Reads relevant doc hints from `doc_hint_paths` (default empty — set per-project to point at your existing architecture docs).
+2. Enumerates files in the subsystem via `git ls-files` so gitignored content is never considered.
+3. In incremental mode: only considers files changed in git since `last_discovered_by_section[<this section>]` plus files not currently mapped to any existing system. In rebuild mode: every file under the root.
+4. Proposes systems with `{ name, areas, notes, preserved_from_existing? }`. Each system targets `system_size_hints` (default 1–15 files; split if >25).
+5. Returns structured JSON: `{ subsystem, proposed_new, areas_patches, notes_appends, covered_existing }`.
 
 ### Phase 3 — Cross-cutting merge
 

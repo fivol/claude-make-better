@@ -81,15 +81,28 @@ Result: ordered list of `{ section, name, last_review, status, blocker, areas, n
 If `<registry_path>` does not exist, treat as empty registry with no frontmatter timestamps.
 
 ### 0.3 Read doc hints
-For each entry in `doc_hint_paths`, read what's there. Missing files are fine — collect what exists. The combined text is `doc_hints` passed to scan agents.
+If `doc_hint_paths` is non-empty, for each entry, read what's there (a file or a directory of files). Missing files are fine — collect what exists. The combined text is `doc_hints` passed to scan agents. If `doc_hint_paths` is empty (default), skip this step and pass `doc_hints: ""` to scan agents.
 
 ### 0.4 Detect candidate subsystems
-List directories one level deep at the repo root. For each directory:
-- Skip if name matches any entry in `subsystem_detection.ignore_dirs`.
-- Skip if it is a hidden directory (`.git`, `.claude`, `.vscode`).
-- Count files recursively (excluding ignored dirs). If `< min_files_in_subsystem`, skip.
 
-Result: list of candidate subsystem roots with their names.
+Use **git** to enumerate files — this automatically respects `.gitignore`, `.git/info/exclude`, and any nested gitignores. Run from repo root:
+
+```bash
+git ls-files --cached --others --exclude-standard
+```
+
+This lists all tracked files plus untracked files that aren't gitignored. Submodules are not recursed into (correct behavior — vendored deps shouldn't be audited).
+
+Group the file list by **top-level directory**. Discard files at the repo root (no top-level dir) — they belong to the bootstrap subsystem and are surfaced by scan agents separately.
+
+For each top-level directory:
+- Skip if name matches any entry in `subsystem_detection.ignore_dirs` (this is a *supplementary* filter on top of gitignore — useful for excluding directories that are committed but you still don't want audited, e.g. `vendor/`).
+- Skip if name starts with `.` (`.git`, `.claude`, `.vscode`, etc. — hidden dirs are not subsystems).
+- Skip if file count `< min_files_in_subsystem`.
+
+Result: list of candidate subsystem roots with their names and file counts.
+
+If the repo is not a git repo (no `.git` directory), abort cleanly: `/systems-discover requires a git repository — initialize one or run from a different directory`.
 
 ### 0.5 Apply `<area>` filter (if provided)
 For each candidate subsystem, decide if it semantically matches `<area>`:

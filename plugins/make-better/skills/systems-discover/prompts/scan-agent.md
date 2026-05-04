@@ -15,9 +15,16 @@ You scan ONE top-level subsystem of the repository (e.g., `app/`, `server/`, `we
 ## Procedure
 
 ### 1. Survey the subsystem
-- List directories one level deep under `subsystem_root`. Each directory is a candidate cluster.
-- List top-level files (non-directory) — they often belong to one system collectively (e.g., `lib/main.dart` + entry plumbing = one bootstrap system).
-- For each cluster, read 2–3 representative files (the most central by name: `index.ts`, `main.dart`, `app.ts`, anything matching the cluster name).
+
+Use **git** to enumerate files — this respects `.gitignore` so you never look at vendored deps, build artifacts, or anything else the project considers noise. From the repo root:
+
+```bash
+git ls-files --cached --others --exclude-standard -- <subsystem_root>
+```
+
+Group the resulting file list by directory one level under `subsystem_root` — each such group is a candidate cluster. Files directly under `subsystem_root` (no nested dir) collectively often belong to one system (e.g., `lib/main.dart` + entry plumbing = one bootstrap system).
+
+For each cluster, read 2–3 representative files — the most central by name (`index.ts`, `main.dart`, `app.ts`, anything matching the cluster name).
 
 ### 2. Cluster by purpose
 Group files by what they cooperate to do, not where they live. Signals that a group is one system:
