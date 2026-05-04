@@ -1,6 +1,7 @@
 {
   "registry_path": "docs/SYSTEMS.md",
   "user_language": "en",
+  "auto_discover_when_stale_days": 30,
   "review_stale_after_days": 14,
   "default_systems_per_run": 3,
   "max_systems_per_run": 8,

@@ -11,23 +11,44 @@ Most tools focus on building new things. **Make Better** is the opposite: it loo
 /plugin install make-better@make-better
 ```
 
-After install, two slash commands become available: `/systems-discover` and `/systems-review`.
+## Quick start
 
-## How it works
+One command, that's it:
 
-### 1. `/systems-discover` — map the project
+```
+/make-better
+```
+
+It figures out the right thing to do based on the state of your repo:
+
+- **No registry yet?** Discovers your subsystems first, then reviews them.
+- **Registry getting stale?** Refreshes it incrementally, then reviews.
+- **Registry fresh?** Goes straight to review.
+
+You can pass arguments to control how many systems get reviewed and which area:
+
+```
+/make-better                  # smart defaults — usually 3 oldest systems
+/make-better 8                # review 8 systems
+/make-better flutter          # only systems under "flutter"
+/make-better flutter 4        # 4 systems matching "flutter"
+```
+
+### Flags
+
+- `--no-discover` — skip the discover phase, go straight to review (use when you've already discovered recently)
+- `--rebuild` — force a full re-discovery before review (use after a major refactor)
+- `--discover-only` — refresh the registry but don't review anything
+
+## What it actually does
+
+### Phase 1: Discover (when needed)
 
 Scans the repository and writes `docs/SYSTEMS.md` — a registry of every distinct **subsystem** (e.g. "Auth middleware", "Kanban drag-and-drop", "Image upload pipeline"). Each entry knows which folders it owns and when it was last reviewed.
 
-```
-/systems-discover                 # incremental update
-/systems-discover --rebuild       # rewrite from scratch
-/systems-discover flutter         # scoped to one area
-```
+Discovery only runs when the registry is missing or older than 30 days (configurable). Most invocations skip it.
 
-Run it once to bootstrap, then re-run incrementally as the project grows.
-
-### 2. `/systems-review` — audit and fix
+### Phase 2: Review
 
 Picks N stale systems from the registry and runs a structured audit on each one across nine topics:
 
@@ -42,12 +63,6 @@ Picks N stale systems from the registry and runs a structured audit on each one 
 - **security** *(optional)* — surface-level vulns
 
 For each system it produces a plan, lets you review/edit/skip in plan mode, then applies fixes in **isolated git worktrees** in parallel — so concurrent reviews never step on each other or on your in-progress work. When fixes land, the system gets a fresh `last_review` stamp and won't be re-audited until it goes stale again (default: 14 days).
-
-```
-/systems-review                   # default count, oldest first
-/systems-review 8                 # review 8 systems
-/systems-review flutter 4         # 4 systems matching "flutter"
-```
 
 ### Example output
 
@@ -72,20 +87,31 @@ Each finding lands as a separate, reviewable commit on a `systems-review/<system
 
 A codebase rots in a thousand tiny ways no single PR review will catch: an enum gained a value but one switch was missed, a util got duplicated in three places, a doc went out of sync with the API, a test stopped covering anything meaningful. Make Better is a structured way to keep paying down that rot without making it your day job.
 
+## Set it and forget it
+
+Pair `/make-better` with a schedule for hands-off maintenance:
+
+```
+/schedule create "0 9 * * 1" /make-better 5
+```
+
+Every Monday at 9am: 5 stale systems reviewed, fixes proposed on branches, ready for your morning coffee.
+
 ## Configuration
 
 Both skills read defaults from the installed plugin and merge in any project-local overrides at `<repo-root>/.claude/make-better.config.json`. Drop that file in your repo to customize without touching the plugin.
 
-The skill itself runs `bash ${CLAUDE_SKILL_DIR}/bin/load-config.sh` which prints the merged config as JSON — no need to think about merging yourself.
+The skill itself runs `bash ${CLAUDE_SKILL_DIR}/bin/load-config.sh` (or `${CLAUDE_PLUGIN_ROOT}/skills/<skill>/bin/load-config.sh` from a slash command) which prints the merged config as JSON — no need to think about merging yourself.
 
 ### Schema
 
 ```jsonc
 {
-  // Common keys (apply to both skills)
+  // Common keys
   "registry_path": "docs/SYSTEMS.md",
+  "auto_discover_when_stale_days": 30,    // /make-better triggers refresh after this many days
 
-  // systems-review-specific overrides
+  // /systems-review-specific overrides
   "review": {
     "user_language": "en",                 // language for user-facing messages (e.g. "ru", "es")
     "review_stale_after_days": 14,         // re-audit after this many days
@@ -102,7 +128,7 @@ The skill itself runs `bash ${CLAUDE_SKILL_DIR}/bin/load-config.sh` which prints
     "topics_optional": ["security"]
   },
 
-  // systems-discover-specific overrides
+  // /systems-discover-specific overrides
   "discover": {
     "max_parallel_scan_agents": 8,
     "scan_agent_model": "opus",
@@ -133,12 +159,31 @@ Every key is optional. Anything you don't specify falls back to the plugin's def
 // Audit more aggressively
 { "review": { "review_stale_after_days": 7, "default_systems_per_run": 5 } }
 
+// Don't auto-rediscover — only refresh when I explicitly run --rebuild
+{ "auto_discover_when_stale_days": 99999 }
+
 // Move the registry out of docs/
 { "registry_path": ".systems/registry.md" }
 
 // Add a custom directory to ignore during discovery
 { "discover": { "subsystem_detection": { "ignore_dirs": ["node_modules", ".git", "vendor"] } } }
 ```
+
+## Advanced: separate phases
+
+`/make-better` covers the common case. For finer-grained control, the underlying commands are still available:
+
+```
+/systems-discover                 # incremental update of docs/SYSTEMS.md
+/systems-discover --rebuild       # rewrite registry from scratch
+/systems-discover flutter         # scoped to one area
+
+/systems-review                   # default count, oldest first
+/systems-review 8                 # review 8 systems
+/systems-review flutter 4         # 4 systems matching "flutter"
+```
+
+Use these directly when you want explicit control over which phase runs.
 
 ## Updating
 
@@ -157,6 +202,8 @@ claude-make-better/
     └── make-better/
         ├── .claude-plugin/
         │   └── plugin.json
+        ├── commands/
+        │   └── make-better.md            ← /make-better orchestrator
         └── skills/
             ├── systems-discover/
             │   ├── SKILL.md

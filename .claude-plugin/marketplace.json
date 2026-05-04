@@ -7,9 +7,9 @@
   "plugins": [
     {
       "name": "make-better",
-      "description": "Continuously audit and improve an existing codebase: discover subsystems, then review them across bugs, DRY, architecture, consistency, efficiency, tests, docs, and security.",
+      "description": "Continuously audit and improve an existing codebase. One command (/make-better) discovers subsystems and reviews stale ones across bugs, DRY, architecture, consistency, efficiency, tests, docs, and security.",
       "source": "plugins/make-better",
-      "version": "0.2.0"
+      "version": "0.3.0"
     }
   ]
 }
