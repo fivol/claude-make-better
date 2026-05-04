@@ -138,6 +138,22 @@ For finer-grained control, the underlying commands are also available directly:
 - `git`
 - `python3` (or `python`) — used by the config loader
 
+## Status & feedback
+
+Make Better is in **active development** (0.x). Behavior, defaults, and config schema may change between minor versions. If you're running it on a real codebase — please tell me when something goes sideways.
+
+[**Open an issue →**](https://github.com/fivol/claude-make-better/issues)
+
+What's especially useful to report:
+
+- **Wrong findings** — the agent flagged something that wasn't a real issue, or missed something obvious. Paste the system + topic + the finding (or what you expected).
+- **Stuck runs** — `/make-better` hung, looped, or exited with a confusing error. Include `--yes` mode if relevant; copy the last ~50 lines of the agent transcript.
+- **Bad merges** — a system's fix broke an unrelated part of the codebase, or the integration lint+test missed a regression. Branch name + diff are gold.
+- **Config that didn't apply** — your override at `.claude/make-better/config.json` was ignored. Run the loader-debug recipe in [docs/configuration.md](docs/configuration.md#inspecting-the-merged-result) and paste the `_meta` block.
+- **UX ideas** — something feels clunky, a flag you wish existed, a default you'd flip. Equally welcome.
+
+A reproduction (`/make-better` invocation, anonymized snippet of the system being reviewed, observed vs expected) makes any of these 10× easier to fix.
+
 ## License
 
 MIT
