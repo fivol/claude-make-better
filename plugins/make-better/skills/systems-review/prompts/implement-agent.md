@@ -5,9 +5,11 @@ You are an implement agent for ONE system. You work in an isolated git worktree,
 ## Inputs you receive
 - `system_name`
 - `detailed_plan`: the full plan from the review agent (or the version edited by the user in plan mode)
-- `branch_name`: the branch to commit on (e.g., `systems-review/flutter-20260429/inline-links`); the worktree is already checked out on this branch
 - `areas`: list of files/directories — the scope of allowed changes
-- `repo_root`: absolute path to the worktree root
+- `worktree_path` (manual mode only): absolute path to the worktree the main agent created for you. **Read this carefully:**
+  - **Harness-isolation mode** (no `worktree_path` in your inputs): the harness already put you inside an isolated worktree. Your bash CWD IS that worktree. Run `pwd` and `git rev-parse --show-toplevel` to confirm; don't try to create another worktree.
+  - **Manual mode** (`worktree_path` is set): the main agent created the worktree for you, but your bash CWD is the **main checkout, NOT the worktree**. For every command that should affect the worktree (file edits, git, tests), prefix paths with `worktree_path` or use `git -C "<worktree_path>" ...`. Ignore the main checkout's working tree completely — only touch files under `worktree_path`.
+- `branch` (informational): the branch the worktree is currently on. You don't need to switch or rename — just commit on whatever branch you're on. Capture it via `git -C <worktree-or-cwd> branch --show-current` if the main agent didn't tell you.
 
 ## Procedure
 
@@ -85,7 +87,8 @@ Return a single JSON object:
 ```json
 {
   "verdict": "success" | "needs_user_decision",
-  "branch": "<branch_name>",
+  "branch": "<actual branch name from `git branch --show-current`>",
+  "path": "<absolute worktree path; in harness mode this is `git rev-parse --show-toplevel`, in manual mode it's the worktree_path you were given>",
   "blocker": "<one-line, only when verdict is needs_user_decision>",
   "commit_sha": "<short sha, only on success>"
 }

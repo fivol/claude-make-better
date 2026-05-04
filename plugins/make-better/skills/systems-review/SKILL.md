@@ -275,28 +275,85 @@ If the user's edit pulls scope outside the system's `areas:`, warn them: "This c
 
 For every system with `verdict: "proceed"` (after edits) AND not skipped:
 
-- Compute slug for the branch: `<branch_prefix>/<filter_slug>-<timestamp>/<system_slug>` where `system_slug` is the system name lowercased with non-alphanum → `-`.
-- Dispatch an implement agent via the Agent tool:
-  - `subagent_type`: `general-purpose`
-  - `model`: `<implement_agent_model>` (default `opus`)
-  - `isolation`: `worktree`
-  - prompt: contents of `prompts/implement-agent.md` plus `system_name`, `detailed_plan`, `branch_name`, `areas`, `repo_root` (the worktree path).
+### 3.1 Compute the desired branch name
+For each system, compute:
+
+- `system_slug` = system name lowercased, non-alphanum → `-`
+- `desired_branch` = `<branch_prefix>/<filter_slug>-<timestamp>/<system_slug>` (e.g. `systems-review/all-20260504-110000/auth-middleware`)
+
+Hold this name; you'll need it after dispatch.
+
+### 3.2 Dispatch the implement agent — try harness isolation first
+
+Dispatch an implement agent via the `Agent` tool with the harness creating the worktree:
+
+- `subagent_type`: `general-purpose`
+- `model`: `<implement_agent_model>` (default `opus`)
+- `isolation`: `"worktree"`
+- prompt: contents of `prompts/implement-agent.md` plus `system_name`, `detailed_plan`, `areas`, and an instruction: *"You are running inside an isolated git worktree the harness already created for you. Use `git rev-parse --show-toplevel` to find your worktree path; that's where you commit. Don't try to create another worktree."*
 
 Cap concurrency at `max_parallel_implement_agents`.
 
-Collect each return:
-- `verdict: "success"` with `branch` and `commit_sha` → mark for merge.
-- `verdict: "needs_user_decision"` with `blocker` → mark for status update; do NOT merge its branch (clean it up).
+The harness picks the branch name itself (typically `worktree-agent-<hash>`). You don't get to control it. After the agent returns, the result includes `branch` (the actual branch the harness used) and `path` (the worktree directory). Capture **both** — you'll need them in Phase 4.
+
+### 3.3 Fallback — manual worktree if harness isolation fails
+
+If the dispatch in 3.2 returned an error related to worktree creation (`Cannot create agent worktree`, `not in a git repository`, anything mentioning `WorktreeCreate`, `isolation`, or `worktree`), **don't abort** — fall back to manual worktree management.
+
+For each affected system, create the worktree yourself from the main checkout:
+
+```bash
+worktree_path=".claude/worktrees/systems-review/<filter_slug>-<timestamp>/<system_slug>"
+mkdir -p "$(dirname "$worktree_path")"
+git worktree add -b "<desired_branch>" "$worktree_path" HEAD
+```
+
+If `git worktree add` itself fails (e.g. branch already exists from a crashed prior run, path occupied), try:
+
+```bash
+git worktree prune                                                # drop ghost entries first
+git worktree remove --force "$worktree_path" 2>/dev/null || true  # clean if path is stale
+git branch -D "<desired_branch>" 2>/dev/null || true              # clean if branch is stale
+git worktree add -b "<desired_branch>" "$worktree_path" HEAD      # retry
+```
+
+If it STILL fails, mark the system as `needs_user_decision` with `blocker: "Could not create worktree: <error>"` and continue with the other systems.
+
+Once the worktree exists, dispatch the implement agent **without** `isolation`:
+
+- `subagent_type`: `general-purpose`
+- `model`: `<implement_agent_model>`
+- (no `isolation`)
+- prompt: contents of `prompts/implement-agent.md` plus `system_name`, `detailed_plan`, `areas`, and `worktree_path` plus an instruction: *"You are NOT in your worktree's directory by default — your bash CWD is the main checkout. For every command that should affect the worktree (edits, git, tests), prefix paths with `$worktree_path` or use `git -C "$worktree_path" ...`. The branch you commit on is `<desired_branch>` and is already the worktree's checked-out branch."*
+
+In manual mode, `branch = desired_branch` and `path = worktree_path` — you computed both, no need to read them back from the agent's return value (but still capture `commit_sha` from the return).
+
+**Once one system fails over to manual mode, use manual mode for ALL remaining systems in this run.** Don't mix modes — that gets confusing.
+
+### 3.4 Collect results
+
+For each system, after dispatch returns:
+- `verdict: "success"` with `branch`, `path`, `commit_sha` → mark for merge in Phase 4.
+- `verdict: "needs_user_decision"` with `blocker` → mark for status update; do NOT merge.
 
 Systems with `verdict: "empty_plan"` and `system_removed` skip Phase 3 entirely — no implementer needed.
 
 ## Phase 4 — Merge & finalize
 
 ### 4.1 Merge implementer branches sequentially
-For each successful branch, in pick order:
 
+For each successful system (in pick order), use the `branch` and `path` you captured from the implement-agent's return value in Phase 3.
+
+**If the harness created the worktree (Phase 3.2 success path):** the branch name is harness-picked (`worktree-agent-<hash>`). It's opaque, so use an explicit merge message that names the system:
+
+```bash
+git merge --no-ff "<branch>" -m "Merge system \"<system_name>\" (review run <timestamp>)"
 ```
-git merge --no-ff <branch_name>
+
+**If you fell back to manual worktrees (Phase 3.3):** the branch name is `<desired_branch>` and is meaningful on its own. Default merge message is fine:
+
+```bash
+git merge --no-ff "<branch>"
 ```
 
 If clean, continue. If conflict:
@@ -304,11 +361,16 @@ If clean, continue. If conflict:
 - Use the system's `detailed_plan` as ground truth for the system's intent.
 - If both systems' intents are independent (different lines, different functions), combine them.
 - If they touched the same lines, prefer the version consistent with both plans. If the resolution is still ambiguous, **ask the user** — do not guess on truly ambiguous content.
-- After resolving: `git add <files> && git commit --no-edit` (the merge commit message is fine; or amend message to reference the system).
+- After resolving: `git add <files> && git commit --no-edit`.
 
 After each successful merge:
-- Delete the branch (`git branch -d <branch_name>`).
-- The Agent tool cleans up worktrees automatically once they're merged.
+- Delete the branch: `git branch -d "<branch>"`.
+- **In harness-isolation mode**: the worktree is cleaned up automatically by the Agent tool — no action needed.
+- **In manual mode**: clean up yourself: `git worktree remove --force "<path>"`. Don't skip this — leftover worktrees will eventually block future runs.
+
+For systems with `verdict: "needs_user_decision"`: clean up the worktree and branch without merging:
+- `git worktree remove --force "<path>"` (manual mode only)
+- `git branch -D "<branch>"`
 
 ### 4.2 Run full lint and test
 From repo root, run the project's full lint and test commands. Detect them by checking, in order: `CLAUDE.md` / `AGENTS.md` / `GEMINI.md` for explicit instructions, then `package.json` `scripts.{lint,test}` (using the runner from the lockfile — `npm`/`pnpm`/`yarn`/`bun`), then `Makefile` targets, then language conventions (`cargo clippy && cargo test`, `go vet ./... && go test ./...`, `ruff check && pytest`, `flutter analyze && flutter test`, etc.).
