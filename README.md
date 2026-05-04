@@ -1,8 +1,6 @@
 # Make Better
 
-Keep your codebase healthy on autopilot. A [Claude Code](https://claude.com/claude-code) plugin that continuously audits and improves an existing project — bugs, DRY, architecture, consistency, performance, tests, docs.
-
-Most tools focus on building new things. **Make Better** is the opposite: it looks at what's already shipped and finds everything that's slightly broken, slightly inconsistent, slightly underdocumented, slightly wasteful — and fixes it. Run it on a schedule and the project quietly gets better between feature work.
+A [Claude Code](https://claude.com/claude-code) plugin that audits and improves an existing codebase. One command picks the oldest subsystems of your project and reviews them across nine topics — bugs, DRY, architecture, consistency, efficiency, tests, docs sync, completeness, and (optionally) security. Findings land as fixes on isolated review branches, ready for you to merge.
 
 ## Install
 
@@ -13,59 +11,31 @@ Most tools focus on building new things. **Make Better** is the opposite: it loo
 
 ## Quick start
 
-One command, that's it:
-
 ```
 /make-better
 ```
 
-It figures out the right thing to do based on the state of your repo:
+That's it. On a fresh repo it discovers your subsystems, then reviews the oldest ones. On subsequent runs it reuses the registry and goes straight to review.
 
-- **No registry yet?** Discovers your subsystems first, then reviews them.
-- **Registry getting stale?** Refreshes it incrementally, then reviews.
-- **Registry fresh?** Goes straight to review.
-
-You can pass arguments to control how many systems get reviewed and which area:
+## Usage
 
 ```
 /make-better                  # smart defaults — usually 3 oldest systems
 /make-better 8                # review 8 systems
-/make-better flutter          # only systems under "flutter"
+/make-better flutter          # only systems matching "flutter"
 /make-better flutter 4        # 4 systems matching "flutter"
 ```
 
 ### Flags
 
-- `--no-discover` — skip the discover phase, go straight to review (use when you've already discovered recently)
-- `--rebuild` — force a full re-discovery before review (use after a major refactor)
-- `--discover-only` — refresh the registry but don't review anything
-- `--yes` (`-y`, `--auto`) — fully autonomous: no plan mode, no prompts, runs to completion. Required for cron / `/schedule`. See [Unattended runs](#unattended-runs--yes) below.
+| Flag | What it does |
+|---|---|
+| `--no-discover` | skip the discover phase, go straight to review |
+| `--rebuild` | force a full re-discovery before review |
+| `--discover-only` | refresh the registry but don't review |
+| `--yes` (`-y`, `--auto`) | unattended: no plan mode, no prompts, runs to completion |
 
-## What it actually does
-
-### Phase 1: Discover (when needed)
-
-Scans the repository and writes `docs/SYSTEMS.md` — a registry of every distinct **subsystem** (e.g. "Auth middleware", "Kanban drag-and-drop", "Image upload pipeline"). Each entry knows which folders it owns and when it was last reviewed.
-
-Discovery only runs when the registry is missing or older than 30 days (configurable). Most invocations skip it.
-
-### Phase 2: Review
-
-Picks N stale systems from the registry and runs a structured audit on each one across nine topics:
-
-- **bugs** — real defects in current code
-- **completeness** — half-finished features, missing states, dead branches
-- **dry** — duplicated logic to extract
-- **architecture** — wrong-layer code, leaky abstractions, mis-placed responsibilities
-- **consistency** — the same thing done two different ways across the codebase
-- **efficiency** — obvious perf wins, wasted work
-- **tests** — missing coverage where it actually matters
-- **docs-sync** — drift between code and docs/contracts
-- **security** *(optional)* — surface-level vulns
-
-For each system it produces a plan, lets you review/edit/skip in plan mode, then applies fixes in **isolated git worktrees** in parallel — so concurrent reviews never step on each other or on your in-progress work. When fixes land, the system gets a fresh `last_review` stamp and won't be re-audited until it goes stale again (default: 14 days).
-
-### Example output
+## Example output
 
 A real run on a medium-sized monorepo:
 
@@ -84,15 +54,9 @@ Total: 104 findings across 5 systems.
 
 Each finding lands as a separate, reviewable commit on a `systems-review/<system>` branch. Nothing is force-merged into your work — you decide what to integrate.
 
-### Why this exists
+## Unattended runs
 
-A codebase rots in a thousand tiny ways no single PR review will catch: an enum gained a value but one switch was missed, a util got duplicated in three places, a doc went out of sync with the API, a test stopped covering anything meaningful. Make Better is a structured way to keep paying down that rot without making it your day job.
-
-## Unattended runs (`--yes`)
-
-By default, both phases pause for review — `/systems-discover` shows the proposed registry in plan mode, `/systems-review` shows a per-system plan and waits for approval. That's the right behavior when you're at the keyboard.
-
-For cron, `/schedule`, and any other unattended use, pass `--yes`:
+By default Make Better pauses for review at key points (proposed registry, per-system plan). For cron, `/schedule`, and any other unattended use, pass `--yes`:
 
 ```
 /make-better --yes 5
@@ -100,16 +64,14 @@ For cron, `/schedule`, and any other unattended use, pass `--yes`:
 
 What changes:
 
-- **Plan mode is skipped.** The agent runs the computed plan as-is.
-- **Stale lockfiles are auto-removed** with a log line.
-- **Ambiguous decisions don't block.** When the agent would normally ask a question, it picks the safe default if there is one. If there's no safe default, it **skips the affected system** (or proposal in discover) and lists it under `Skipped — human decision needed` in the final report.
-- **Hard errors still abort.** Missing config, broken registry, no read access — these stop the run and surface as failures.
+- Plan mode is skipped — the agent runs the computed plan as-is.
+- Stale lockfiles are auto-removed.
+- Ambiguous decisions don't block: the agent picks the safe default if there is one, otherwise skips the affected system and lists it under "Skipped — human decision needed" in the final report.
+- Hard errors still abort.
 
-Fixes still land on isolated `systems-review/<system>` branches — nothing gets force-merged into your work. Read the branches and the skipped-systems list before merging anything.
+Fixes still land on isolated branches. Read the branches and the skipped-systems list before merging.
 
 ## Set it and forget it
-
-Pair `/make-better` with a schedule for hands-off maintenance:
 
 ```
 /schedule create "0 9 * * 1" /make-better --yes 5
@@ -119,175 +81,33 @@ Every Monday at 9am: 5 stale systems reviewed, fixes proposed on branches, ready
 
 ## Configuration
 
-Both skills read defaults from the installed plugin and merge in any project-local overrides at `<repo-root>/.claude/make-better/config.json`. Everything you customize for Make Better lives under `.claude/make-better/`:
-
-```
-.claude/
-└── make-better/
-    ├── config.json              # overrides
-    └── topics/                  # optional — custom or shadowed review topics
-        ├── perf-budget.md
-        └── bugs.md              # shadows the built-in bugs.md
-```
-
-Drop the file in your repo to customize without touching the plugin.
-
-The skill itself runs `bash ${CLAUDE_SKILL_DIR}/bin/load-config.sh` (or `${CLAUDE_PLUGIN_ROOT}/skills/<skill>/bin/load-config.sh` from a slash command) which prints the merged config as JSON — no need to think about merging yourself.
-
-### Schema
+Drop a JSON file at `<repo-root>/.claude/make-better/config.json` to customize without touching the plugin:
 
 ```jsonc
 {
-  // Common keys
-  "registry_path": "docs/SYSTEMS.md",
-  "auto_discover_when_stale_days": 30,    // /make-better triggers refresh after this many days
-
-  // /systems-review-specific overrides
   "review": {
-    "user_language": "en",                 // language for user-facing messages (e.g. "ru", "es")
-    "review_stale_after_days": 14,         // re-audit after this many days
-    "default_systems_per_run": 3,
-    "max_systems_per_run": 8,
-    "max_parallel_review_agents": 4,
-    "max_parallel_implement_agents": 2,
-    "topic_agent_model": "sonnet",
-    "review_agent_model": "opus",
-    "implement_agent_model": "opus",
-    "lockfile_dir": "docs",
-    "branch_prefix": "systems-review",
-    "topics_required": ["bugs", "completeness", "dry", "architecture", "consistency", "efficiency", "tests", "docs-sync"],
-    "topics_optional": ["security"]
+    "user_language": "ru",                 // user-facing messages in Russian
+    "review_stale_after_days": 7,          // re-audit weekly instead of bi-weekly
+    "default_systems_per_run": 5
   },
-
-  // /systems-discover-specific overrides
   "discover": {
-    "max_parallel_scan_agents": 8,
-    "scan_agent_model": "opus",
-    "main_agent_model": "opus",
-    "lockfile_path": "docs/.systems-discover.lock",
     "subsystem_detection": {
-      "ignore_dirs": ["node_modules", "dist", "build", ".git", "coverage", ".next", "out", "target", "__pycache__"],
-      "min_files_in_subsystem": 5
-    },
-    "doc_hint_paths": ["docs/AGENT_MAP", "docs/CONTRACTS", "docs/PRODUCT", "README.md"],
-    "system_size_hints": {
-      "typical_min_files": 1,
-      "typical_max_files": 15,
-      "split_threshold_files": 25
+      "ignore_dirs": ["node_modules", ".git", "vendor"]
     }
   }
 }
 ```
 
-Every key is optional. Anything you don't specify falls back to the plugin's default. Nested objects (e.g. `subsystem_detection`) are deep-merged, so you can override one inner key without redeclaring the rest. Defaults live in `plugins/make-better/skills/<skill>/defaults.json` for reference.
-
-### Common overrides
-
-```jsonc
-// Switch user-facing language to Russian
-{ "review": { "user_language": "ru" } }
-
-// Audit more aggressively
-{ "review": { "review_stale_after_days": 7, "default_systems_per_run": 5 } }
-
-// Don't auto-rediscover — only refresh when I explicitly run --rebuild
-{ "auto_discover_when_stale_days": 99999 }
-
-// Move the registry out of docs/
-{ "registry_path": ".systems/registry.md" }
-
-// Add a custom directory to ignore during discovery
-{ "discover": { "subsystem_detection": { "ignore_dirs": ["node_modules", ".git", "vendor"] } } }
-```
+Every key is optional. Anything missing falls back to plugin defaults. Full schema and all knobs: **[docs/configuration.md](docs/configuration.md)**.
 
 ## Custom review topics
 
-Out of the box, `/systems-review` audits each system across 9 built-in topics (bugs, dry, architecture, etc.). You can add your own — domain-specific perf budgets, accessibility, i18n coverage, security policies, anything you want flagged on every review.
+Add your own audit topics — perf budgets, accessibility, internal style guides, anything you want flagged on every review.
 
-### Add a topic in two steps
+1. Drop a prompt at `.claude/make-better/topics/<name>.md`.
+2. Add `<name>` to `topics_required` in your config.
 
-**1. Create the prompt** at `<repo-root>/.claude/make-better/topics/<name>.md`. Use the built-in topics as templates — see [bugs.md](plugins/make-better/skills/systems-review/topics/bugs.md) for the canonical structure.
-
-Minimal shape:
-
-```markdown
----
-name: perf-budget
-required: true
----
-
-# Perf Budget
-
-## What to look for
-- Functions with O(n²) work where n is unbounded user input.
-- Synchronous calls in hot paths that could be batched or cached.
-- Allocations inside tight loops.
-
-## What NOT to look for
-- General optimization → handled by `efficiency`.
-- Algorithmic redesigns → architecture.
-
-## Output format
-Return a JSON array. Each entry:
-{
-  "file": "path/to/file.ts",
-  "line": 42,
-  "issue": "short description",
-  "severity": "high" | "medium" | "low",
-  "fix": "what should change"
-}
-```
-
-The topic agent receives the system's areas, your prompt, and standard context (repo root, git diff, etc.) — same machinery the built-ins use.
-
-**2. Register it** in `.claude/make-better/config.json`:
-
-```json
-{
-  "review": {
-    "topics_required": ["bugs", "completeness", "dry", "architecture", "consistency", "efficiency", "tests", "docs-sync", "perf-budget"],
-    "topics_optional": ["security"]
-  }
-}
-```
-
-That's it. On the next `/systems-review`, a topic agent dispatches with your prompt and findings flow into the merged plan alongside built-in topics.
-
-### Shadowing a built-in
-
-Drop a file with the same name as a built-in (`.claude/make-better/topics/bugs.md`) — your version takes precedence. Useful when the built-in is too lax/strict for your codebase.
-
-### Resolution order
-
-For each name in `topics_required` ∪ `topics_optional`:
-
-1. `<repo-root>/.claude/make-better/topics/<name>.md` (user, wins)
-2. `${plugin}/skills/systems-review/topics/<name>.md` (built-in, fallback)
-3. **Neither found → `/systems-review` aborts** with a message telling you what file is missing. Either create it or drop the name from your config.
-
-### Debugging
-
-Run the loader directly to see what got resolved:
-
-```bash
-bash $(find ~/.claude/plugins -path "*/make-better/skills/systems-review/bin/load-config.sh" | head -1) | jq '._topics, ._unresolved_topics'
-```
-
-## Advanced: separate phases
-
-`/make-better` covers the common case. For finer-grained control, the underlying commands are still available:
-
-```
-/systems-discover                 # incremental update of docs/SYSTEMS.md
-/systems-discover --rebuild       # rewrite registry from scratch
-/systems-discover flutter         # scoped to one area
-
-/systems-review                   # default count, oldest first
-/systems-review 8                 # review 8 systems
-/systems-review flutter 4         # 4 systems matching "flutter"
-```
-
-Use these directly when you want explicit control over which phase runs.
+Done. Full guide with prompt template: **[docs/custom-topics.md](docs/custom-topics.md)**.
 
 ## Updating
 
@@ -296,50 +116,25 @@ Use these directly when you want explicit control over which phase runs.
 /plugin update make-better@make-better
 ```
 
-## Repo layout
+## More
 
-Plugin (this repo):
+- **[How `/systems-review` works](docs/systems-review.md)** — phases, parallelism, worktrees, lockfiles.
+- **[How `/systems-discover` works](docs/systems-discover.md)** — registry format, scan agents, cross-cutting merge.
+- **[Configuration reference](docs/configuration.md)** — every knob, with defaults and examples.
+- **[Custom review topics](docs/custom-topics.md)** — add your own audit dimensions.
 
-```
-claude-make-better/
-├── .claude-plugin/
-│   └── marketplace.json
-└── plugins/
-    └── make-better/
-        ├── .claude-plugin/
-        │   └── plugin.json
-        ├── commands/
-        │   └── make-better.md            ← /make-better orchestrator
-        └── skills/
-            ├── systems-discover/
-            │   ├── SKILL.md
-            │   ├── defaults.json
-            │   ├── bin/                  ← load-config.{sh,py}
-            │   └── prompts/
-            └── systems-review/
-                ├── SKILL.md
-                ├── defaults.json
-                ├── bin/                  ← load-config.{sh,py} + topic resolver
-                ├── prompts/
-                └── topics/               ← built-in topic prompts
-```
-
-Per-project user customization (in your repo):
+For finer-grained control, the underlying commands are also available directly:
 
 ```
-<your repo>/
-└── .claude/
-    └── make-better/
-        ├── config.json                   ← optional override
-        └── topics/                       ← optional custom / shadowed topics
-            └── *.md
+/systems-discover [<area>] [--rebuild]    # registry maintenance
+/systems-review   [count] [subsystem]     # audit only
 ```
 
 ## Requirements
 
 - Claude Code with plugin marketplace support
 - `git`
-- `python3` (or `python`) — used by the config loader; available on virtually every dev machine
+- `python3` (or `python`) — used by the config loader
 
 ## License
 
