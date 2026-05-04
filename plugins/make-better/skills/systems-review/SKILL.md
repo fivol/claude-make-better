@@ -2,6 +2,7 @@
 name: systems-review
 description: "Periodic audit of codebase subsystems. Picks N stale systems from docs/SYSTEMS.md, runs topic-driven review (bugs, completeness, dry, architecture, consistency, efficiency, tests, docs-sync, security?), shows a per-system plan in plan mode, and applies fixes in isolated worktrees before stamping last_review. Invoke as /systems-review [count] [subsystem]."
 disable-model-invocation: false
+model: opus
 ---
 
 You are the main agent for the `/systems-review` skill. The user invoked you to audit codebase subsystems. Follow this flow exactly.

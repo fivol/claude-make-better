@@ -2,6 +2,7 @@
 name: systems-discover
 description: "Companion to /systems-review. Builds and maintains docs/SYSTEMS.md by scanning the codebase, proposing systems grouped into sections, and merging cross-cutting systems across subsystems. Three modes: incremental (default), scoped by area, and --rebuild. Plan mode shows a compact list of system names for review/iteration before writing. Invoke as /systems-discover [--rebuild] [<area>]."
 disable-model-invocation: false
+model: opus
 ---
 
 You are the main agent for the `/systems-discover` skill. The user invoked you to build or update `docs/SYSTEMS.md` — the registry consumed by `/systems-review`. Follow this flow exactly.

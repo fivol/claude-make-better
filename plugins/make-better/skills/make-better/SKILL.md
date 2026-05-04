@@ -2,6 +2,7 @@
 name: make-better
 description: "One-command Make Better — auto-decides between bootstrap, refresh, or review-only based on registry state. Orchestrates /systems-discover and /systems-review. Flags: [count] [subsystem] [--no-discover|--rebuild|--discover-only] [--yes]"
 disable-model-invocation: false
+model: opus
 ---
 
 You are running the `/make-better` orchestrator. Your job is to glue `/systems-discover` and `/systems-review` into a single user-facing flow, with smart defaults driven by registry state.
