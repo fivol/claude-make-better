@@ -1,7 +1,7 @@
 {
   "name": "make-better",
   "description": "Continuously audit and improve an existing codebase. Ships /make-better (one-command flow) plus /systems-discover and /systems-review for fine-grained control. Audits across 9 topics: bugs, completeness, DRY, architecture, consistency, efficiency, tests, docs-sync, and security.",
-  "version": "0.5.4",
+  "version": "0.5.5",
   "author": {
     "name": "fivol",
     "url": "https://github.com/fivol"

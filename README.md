@@ -1,5 +1,7 @@
 # Make Better
 
+> **Audit and improve your codebase on autopilot — one command, nine topics, fixes on a branch.**
+
 A [Claude Code](https://claude.com/claude-code) plugin that audits and improves an existing codebase. One command picks the oldest subsystems of your project and reviews them across nine built-in topics — bugs, DRY, architecture, consistency, efficiency, tests, docs sync, completeness, and (optionally) security — plus any custom topics you add for your own conventions. Fixes are applied as merge commits on your current branch — never pushed, easy to inspect or undo.
 
 Everything is configurable per-project: staleness thresholds, parallelism, agent models, ignored directories, the topic list itself. Drop a JSON file at `.claude/make-better/config.json` and you're done — see [Configuration](#configuration) and [Custom review topics](#custom-review-topics) below.
