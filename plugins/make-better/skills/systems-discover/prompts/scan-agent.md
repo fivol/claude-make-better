@@ -29,8 +29,11 @@ For each cluster, read 2–3 representative files — the most central by name (
 ### 2. Cluster by purpose
 Group files by what they cooperate to do, not where they live. Signals that a group is one system:
 - Shared purpose (one capability or feature).
+- **Always called together** — if file A is invoked, file B is invoked too, and the feature only makes sense when both run. Strong signal: ONE system, not two.
 - Mutual imports OR shared contract types from `common/types/` or `docs/CONTRACTS/`.
 - Naming that reads as a single concept ("auth", "snapshot merger", "inline links").
+
+**Cross-area features are still one system.** When the same feature lives across multiple areas of the codebase (e.g. one part on the request side, another on the rendering side, a shared contract in between) and is **always exercised end-to-end as a single flow**, register it as ONE system. The name should annotate where it lives — `(area1 + area2)` for symmetric coupling, `(area1 → area2)` for directional flows. Examples: `Auth (api + ui)`, `Image upload (client → api)`, `Sync engine (worker + clients)`. Splitting such a feature into two entries duplicates review work and loses the end-to-end perspective. Only split when the parts have **independent reasons to change** and meaningfully different review concerns.
 
 Signals against grouping:
 - Generic containers (`utils/`, `helpers/`, `lib/` — these hold heterogeneous unrelated code; do NOT register as systems).

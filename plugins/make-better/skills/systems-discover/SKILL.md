@@ -195,22 +195,56 @@ For renamed systems (rebuild), append `(renamed from <old>)` after the name.
 
 Enter plan mode (or its equivalent — present the document for approval).
 
-### User actions
+### Approval prompt — use AskUserQuestion
 
-| User action | Main agent response |
+After printing the plan, surface decisions via the **AskUserQuestion** tool (load it via `ToolSearch` with `select:AskUserQuestion` if not yet available). Build a single question with carefully chosen options. Do **not** dump a free-form prompt with verbal command examples — the user picks an option with arrow keys.
+
+#### Building the options
+
+The list is dynamic and built from this run's specific ambiguities. Always include exactly these slots, in this order:
+
+1. **First option (default) — "Approve as-is, merge cross-cutting where in doubt."**
+   - Label: `Approve everything (merge cross-cutting features into one entry where uncertain)`
+   - Means: proceed to Phase 5, AND for any system whose split-vs-merge with another proposal was uncertain, prefer the merged form (one entry annotated with where it lives, e.g. `Auth (api + ui)`). Code that is always called together = one system.
+   - This option always exists and is always first.
+
+2. **2–4 dynamic options derived from this run.** Look at your proposals and pick the most useful alternative actions to offer:
+   - If you have **boundary-uncertain proposals** (`boundary_uncertain: true`, or low confidence, or ones the user might want to split/merge differently): offer specific options like `Split "Todo List View" into Todo List, Add Form, Filters & Search`, `Merge "Auth (api)" and "Auth (ui)" into one entry "Auth (api + ui)"`, `Drop "Validation Helpers" — utility module, not a system`. Each option targets a SPECIFIC system by name. Pick at most 3 such options — the ones where the alternative is most plausible. Skip slots if there's nothing meaningful to ask.
+   - If a **rename** was detected (rebuild mode), include: `Treat "<new name>" as a fresh system instead of a rename of "<old name>"` (the safe-default-without-flag path).
+   - For each dynamic option, the agent applies the corresponding edit before proceeding. Edits map to internal actions: `split`, `merge`, `drop`, `rename`, `keep_as_rebuilt`, `keep_as_new`. The user doesn't see this mapping — they see plain language.
+
+3. **Last option — `Modify (free-form instructions) or cancel`.**
+   - Label: `Modify the plan — give free-form instructions, or cancel`
+   - Selecting this drops out of AskUserQuestion. Wait for the user's free-text input. Apply edits per the "Free-form edits" rules below. After edits, re-render the plan and re-call AskUserQuestion with regenerated options.
+
+#### Decision matrix
+
+| Selected option | Main agent action |
 |---|---|
-| `approve` / `execute` / `go` / `yes` | Proceed to Phase 5. |
-| `show <system>` | Print `areas:`, `notes:`, and (if applicable) `preserved_from_existing` for that system. Stay in plan mode. |
-| `show areas` | Print every proposed system with full `areas:`. Stay in plan mode. |
-| `drop <system>` | Remove from `proposed_systems`. Show updated list. |
-| `rename <X> to <Y>` | Apply rename; if `Y` collides with another proposal, suffix with subsystem; show updated list. |
-| `split <X> into <A> and <B>` | Re-dispatch one scan agent for the subsystem(s) covered by X's areas with `methodology_overrides` instructing a split. Replace X with the new proposals. |
-| `merge <X> and <Y>` | Combine `areas` and `notes`, pick a merged name following conventions, drop X and Y, add the merged. |
-| `you forgot <hint>` (e.g., `you forgot the snapshot merger`) | Re-dispatch one scan agent against the most relevant subsystem with `methodology_overrides: "Look specifically for: <hint>"`. Add anything new it returns. |
-| `make systems smaller in <section>` / `make larger` / `treat <X> as one system` | Re-dispatch the relevant scan agents with `methodology_overrides` reflecting the user's instruction. Replace those sections' proposals with the new output. |
-| `cancel` / `abort` / `no` | Skip Phase 5. Lockfile is still released in cleanup. Nothing is written. |
+| Approve as-is (default) | For each cross-cutting uncertain pair, merge into one entry with `(area1 + area2)` or `(area1 → area2)` naming. Proceed to Phase 5. |
+| `Split "<X>" into …` | Re-dispatch one scan agent for X's area(s) with `methodology_overrides` instructing a split. Replace X with the new proposals. Re-show plan, re-prompt. |
+| `Merge "<X>" and "<Y>" into "<merged>"` | Combine `areas` and `notes`, use the proposed merged name, drop X and Y, add the merged. Re-show, re-prompt. |
+| `Drop "<X>" — …` | Remove X from `proposed_systems`. Re-show, re-prompt. |
+| `Treat "<Y>" as fresh, not a rename of "<X>"` | Clear `preserved_from_existing` on Y; keep X as-is in registry. Re-show, re-prompt. |
+| Modify or cancel | See "Free-form edits" below. |
 
-Iterate until the user approves or aborts.
+#### Free-form edits
+
+When the user picks the Modify option and types free text:
+
+| User input pattern | Action |
+|---|---|
+| `cancel` / `abort` / `no` | Skip Phase 5. Lockfile released. Nothing is written. |
+| `show <system>` | Print `areas:`, `notes:`, `preserved_from_existing`. Re-prompt. |
+| `show areas` | Print every proposed system with full `areas:`. Re-prompt. |
+| `drop <system>` / `rename <X> to <Y>` / `split <X> into <A> and <B>` / `merge <X> and <Y>` | Apply as described above. |
+| `you forgot <hint>` | Re-dispatch a scan agent with `methodology_overrides: "Look specifically for: <hint>"`. Add anything new. |
+| `make systems smaller in <section>` / `larger` / `treat <X> as one system` | Re-dispatch with `methodology_overrides` reflecting the instruction. |
+| Anything else (unclear) | Reply asking for clarification. Stay in plan mode. |
+
+After every free-form edit, re-render the plan and call AskUserQuestion again with regenerated options.
+
+Iterate until the user picks Approve, picks one of the structured edit options, or cancels.
 
 ## Phase 5 — Write registry (progressive, with visible per-section / per-system progress)
 
