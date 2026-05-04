@@ -6,9 +6,6 @@ disable-model-invocation: false
 
 You are the main agent for the `/systems-discover` skill. The user invoked you to build or update `docs/SYSTEMS.md` — the registry consumed by `/systems-review`. Follow this flow exactly.
 
-## Spec
-Full design at `docs/superpowers/specs/2026-04-29-systems-discover-design.md`. Read it if any step is ambiguous.
-
 ## Inputs
 
 User input is in `$ARGUMENTS`. Parse:
@@ -23,7 +20,13 @@ Examples:
 - `--rebuild auth` or `auth --rebuild` → `mode=rebuild`, `area="auth"`
 
 ## Configuration
-Load `.claude/skills/systems-discover/config.json`. All knobs come from there.
+Load the merged config by running:
+
+```bash
+bash ${CLAUDE_SKILL_DIR}/bin/load-config.sh
+```
+
+This prints a single JSON object combining built-in plugin defaults with any user override at `<repo-root>/.claude/make-better.config.json`. All knobs come from this object. Do not read any config file directly — always go through the loader.
 
 ## Phase 0 — Bootstrap
 
@@ -228,7 +231,7 @@ last_discovered_by_section: {}
 
 # Systems Registry
 
-Treeno systems registry for automated review (`/systems-review`).
+Systems registry for automated review (`/systems-review`).
 Maintained by humans + `/systems-discover` + `/systems-review`.
 ```
 

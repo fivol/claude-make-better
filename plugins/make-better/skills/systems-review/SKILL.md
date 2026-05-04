@@ -6,9 +6,6 @@ disable-model-invocation: false
 
 You are the main agent for the `/systems-review` skill. The user invoked you to audit codebase subsystems. Follow this flow exactly.
 
-## Spec
-Full design at `docs/superpowers/specs/2026-04-29-systems-review-design.md`. Read it if any step is ambiguous.
-
 ## Inputs
 
 User input is in `$ARGUMENTS`. Parse:
@@ -23,7 +20,15 @@ Examples:
 - (empty) → count=default, subsystem=none
 
 ## Configuration
-Load `.claude/skills/systems-review/config.json`. All knobs (`registry_path`, `review_stale_after_days`, etc.) come from there. Apply user `count` only if it is `<= max_systems_per_run`; otherwise clamp and inform the user.
+Load the merged config by running:
+
+```bash
+bash ${CLAUDE_SKILL_DIR}/bin/load-config.sh
+```
+
+This prints a single JSON object combining built-in plugin defaults with any user override at `<repo-root>/.claude/make-better.config.json`. All knobs (`registry_path`, `review_stale_after_days`, etc.) come from this object. Do not read any config file directly — always go through the loader.
+
+Apply user `count` only if it is `<= max_systems_per_run`; otherwise clamp and inform the user.
 
 ### User-facing language
 The config has a `user_language` field (default `"en"`). Render **every user-facing message** in this language: status lines, plan mode content, AskUserQuestion prompts and option labels, the final report, error messages. The instructions in this skill, JSON shapes exchanged with sub-agents, commit messages, branch names, and code stay in English regardless. Translate only what the user reads.
@@ -384,9 +389,8 @@ Full lint+test after merges: PASS
        Open the app, clear cookies, watch the login screen — should show
        the typed ToastError with localized title.
      - Session token absent from server error logs
-       Run `ssh helsinki docker logs treeno-server-1 --tail 200` after
-       triggering an invalid login; grep for the token field — must be
-       empty.
+       Tail the server log after triggering an invalid login; grep for
+       the token field — must be empty.
    Commits: 4a7d2f1
    last_review: 2026-04-29
 
@@ -403,8 +407,8 @@ Full lint+test after merges: PASS
      - Folded duplicate diff helpers into common/utils/diff.ts
    Verify manually:
      - New snapshots still write correctly
-       In the Treeno DEV MCP, create a node and confirm the next snapshot
-       appears with the expected delta count.
+       Trigger a write in the dev environment and confirm the next
+       snapshot appears with the expected delta count.
    Commits: 8f3e91c
    last_review: 2026-04-29
 

@@ -78,7 +78,7 @@ Return a single JSON object. Always English, regardless of the user's language �
     },
     {
       "what": "Confirm session token is no longer in server error logs",
-      "how": "Run `ssh helsinki docker logs treeno-server-1 --tail 200` after triggering an invalid login; grep for the token field — must be empty."
+      "how": "Tail the server log after triggering an invalid login; grep for the token field — must be empty."
     }
   ],
 

@@ -1,15 +1,15 @@
 {
-  "name": "fivol-skills",
+  "name": "make-better",
   "owner": {
     "name": "fivol",
     "url": "https://github.com/fivol"
   },
   "plugins": [
     {
-      "name": "main",
-      "description": "Main collection of custom Claude Code skills",
-      "source": "plugins/main",
-      "version": "0.1.0"
+      "name": "make-better",
+      "description": "Continuously audit and improve an existing codebase: discover subsystems, then review them across bugs, DRY, architecture, consistency, efficiency, tests, docs, and security.",
+      "source": "plugins/make-better",
+      "version": "0.2.0"
     }
   ]
 }

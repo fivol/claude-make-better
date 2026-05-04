@@ -1,0 +1,10 @@
+{
+  "name": "make-better",
+  "description": "Continuously audit and improve an existing codebase. Ships /systems-discover (map the project) and /systems-review (audit stale subsystems across 9 topics, fix in isolated worktrees).",
+  "version": "0.2.0",
+  "author": {
+    "name": "fivol",
+    "url": "https://github.com/fivol"
+  },
+  "homepage": "https://github.com/fivol/claude-make-better"
+}
