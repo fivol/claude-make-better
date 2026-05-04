@@ -133,15 +133,11 @@ Done. Full guide with prompt template: **[docs/custom-topics.md](docs/custom-top
 
 ## Updating
 
-Claude Code has no `/plugin update` subcommand — refresh the catalog, then reinstall:
-
 ```
 /plugin marketplace update make-better
-/plugin uninstall make-better@make-better
-/plugin install make-better@make-better
 ```
 
-Or open the interactive UI with bare `/plugin` and manage from the **Installed** tab.
+Or use the interactive `/plugin` UI.
 
 ## More
 
