@@ -10,6 +10,12 @@
       "description": "Continuously audit and improve an existing codebase. One command (/make-better) discovers subsystems and reviews stale ones across bugs, DRY, architecture, consistency, efficiency, tests, docs, and security.",
       "source": "./plugins/make-better",
       "version": "0.10.1"
+    },
+    {
+      "name": "feature",
+      "description": "Build each feature/fix in an isolated git-worktree workspace: unique port, pretty *.localhost URL, detached dev servers, PR-per-iteration, and a live admin dashboard. Config-driven via .claude/feature/config.json.",
+      "source": "./plugins/feature",
+      "version": "0.1.0"
     }
   ]
 }

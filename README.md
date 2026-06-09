@@ -1,4 +1,19 @@
-# Make Better
+# Claude Code plugins by fivol
+
+> A small [Claude Code](https://claude.com/claude-code) plugin marketplace — add it once, install what you want.
+
+```
+/plugin marketplace add fivol/claude-make-better
+```
+
+| Plugin | Install | What it does |
+|---|---|---|
+| [**make-better**](#make-better) | `/plugin install make-better@make-better` | Audit & improve your codebase on autopilot — one command, nine topics, fixes on a branch. |
+| [**feature**](#feature) | `/plugin install feature@make-better` | Build each feature/fix in an isolated git-worktree workspace — unique port, pretty URL, PR-per-iteration, live admin dashboard. |
+
+---
+
+# make-better
 
 > **Audit and improve your codebase on autopilot — one command, nine topics, fixes on a branch.**
 
@@ -174,6 +189,104 @@ What's especially useful to report:
 - **UX ideas** — something feels clunky, a flag you wish existed, a default you'd flip. Equally welcome.
 
 A reproduction (`/make-better` invocation, anonymized snippet of the system being reviewed, observed vs expected) makes any of these 10× easier to fix.
+
+---
+
+# feature
+
+> **Every feature/fix in its own isolated worktree — unique port, pretty URL, and a PR per iteration.**
+
+A [Claude Code](https://claude.com/claude-code) plugin that turns "build/fix X" into a disciplined,
+reviewable flow. Invoked once, it puts the agent into **Feature Mode** for the session: each change is
+built in an isolated `git worktree` (deps symlinked, never reinstalled), runs on its own stable port
+behind a pretty `http://<task>.localhost` URL, and lands in a PR — simplified, committed, and pushed
+**before** you ever see the summary. A live admin dashboard shows every workspace at a glance.
+
+It's config-driven, so it works for any single- or multi-repo workspace.
+
+## Install
+
+```
+/plugin marketplace add fivol/claude-make-better
+/plugin install feature@make-better
+```
+
+## Quick start
+
+1. Create a config at your workspace root — `<workspace-root>/.claude/feature/config.json` — declaring
+   your repos:
+
+   ```json
+   {
+     "proxy": { "domain_suffix": "localhost", "admin_port": 7878 },
+     "repos": [
+       { "name": "api", "base_branch": "main", "port_band": 18000, "frontend": false,
+         "deps_symlink": ["venv"], "env_copy": [".env"],
+         "dev_start": "venv/bin/python manage.py runserver 0.0.0.0:{port}" },
+       { "name": "web", "base_branch": "main", "port_band": 13000, "frontend": true,
+         "deps_symlink": ["node_modules"], "env_copy": [".env", ".env.local"],
+         "dev_start": "node_modules/.bin/next dev -p {port}" }
+     ]
+   }
+   ```
+
+   The workspace root is the folder holding your repo checkouts (each as a sibling folder named after
+   its `name`). The config's presence *is* what marks that root.
+
+2. Just ask for a feature — "let's add a dark-mode toggle", "fix the upload limit". The agent enters
+   Feature Mode, spins up the worktree(s) + server(s), and from then on every iteration is
+   committed/pushed into a PR automatically.
+
+3. When you're happy, say "done" / "merge it" — it syncs the base branch into the task branch (CI runs
+   on the integrated code), merges, and cleans everything up.
+
+> Add `--lite` for a no-server run (worktree + simplify + commit + push + PR, but no ports / dev
+> servers / pretty URLs) — handy for backend-only or docs changes.
+
+## How it works
+
+| Phase | What happens |
+|---|---|
+| **0 · Analyze** | Understand the request, confirm scope, ensure the config exists. Creates nothing yet. |
+| **1 · Init** | `git worktree add` off the fresh base, symlink deps, copy `.env`, allocate a port, start the detached dev server, refresh the proxy. |
+| **2 · Iterate** | Implement → `/simplify` → commit → push → ensure PR → persist `summary.md` + session id → summary with deep test links. Repeats per prompt. |
+| **3 · Finish** | Sync base into the task branch (conflicts resolved in the worktree so the PR reflects what lands), wait for green CI, merge into base, push, tear down worktree/branch/port/proxy. |
+
+Dev servers are launched **detached** (their own session, reparented to launchd) so they survive a
+one-shot `claude -p` turn, and a self-throttling **reaper** runs each turn to cap live servers and
+tear down workspaces whose PRs have merged — so nothing piles up.
+
+## Admin dashboard
+
+```
+python3 "${CLAUDE_PLUGIN_ROOT}/skills/feature/scripts/admin.py" --open
+```
+
+A dependency-free local dashboard (also at `http://admin.localhost` once the proxy is set up) showing
+every workspace as a card: repos with ahead/behind + diffstat, PR state + CI rollup, dev-server health
+with start/stop and a log tail, the agent-written summary with click-persisted test checkboxes, and a
+copy-able `claude --resume <session-id>` to continue any task's chat. Read-only over the skill's state
+— merging stays chat-driven.
+
+## Pretty `*.localhost` URLs (optional)
+
+Run the one-time setup once to get `http://<task>.localhost` instead of `http://localhost:<port>`:
+
+```
+"${CLAUDE_PLUGIN_ROOT}/skills/feature/scripts/proxy-setup.sh"
+```
+
+It installs [Caddy](https://caddyfile.com/) and runs it on `:80`; per-task reloads after that need no
+sudo. Skip it and the skill falls back to plain `localhost:<port>` URLs.
+
+## Configuration & requirements
+
+Full config schema (per-repo fields, proxy, reaper caps, worktrees dir): **[docs/feature/configuration.md](docs/feature/configuration.md)**.
+
+- Claude Code with plugin marketplace support
+- `git` (with `git worktree`), `gh` (GitHub CLI, for PRs)
+- `python3` — used by the skill's scripts
+- macOS/Linux. Pretty URLs additionally need Caddy + Homebrew (optional)
 
 ## License
 
