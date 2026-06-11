@@ -22,6 +22,14 @@ wholesale, so your `repos` list replaces the empty default).
   "max_live_servers": 5,
   "reap_sweep_age": 1800,
   "output_language": "the user's language",
+  "considerations": [
+    {
+      "name": "mobile",
+      "when": "any change to UI / markup / styles in a frontend repo",
+      "check": "Does this apply to the mobile viewport? If so, verify it's adapted: responsive layout, tap targets, no horizontal scroll, popups/modals fit.",
+      "repos": ["web"]
+    }
+  ],
   "proxy": {
     "enabled": true,
     "domain_suffix": "localhost",
@@ -59,6 +67,7 @@ wholesale, so your `repos` list replaces the empty default).
 | `max_live_servers` | `5` | Reaper cap on concurrent dev servers; the oldest beyond this are stopped (worktree/PR kept). |
 | `reap_sweep_age` | `1800` | Min seconds between networked PR-state teardown sweeps (throttle). |
 | `output_language` | `"the user's language"` | Hint for the language of agent output and the persisted `summary.md`. |
+| `considerations` | `[]` | Cross-cutting dimensions the agent validates every iteration (see below). Empty ⇒ feature off. |
 | `proxy` | see below | Pretty-URL / admin-dashboard settings. |
 | `repos` | `[]` | The repos the skill can build in. **Required** — the skill can't run with an empty list. |
 
@@ -70,6 +79,41 @@ wholesale, so your `repos` list replaces the empty default).
 | `domain_suffix` | `"localhost"` | URL suffix. `*.localhost` resolves to `127.0.0.1` in Chrome with no DNS/hosts setup. |
 | `admin_host` | `"admin.localhost"` | Hostname the admin dashboard is proxied at. |
 | `admin_port` | `7878` | Port the admin dashboard listens on (also its `:127.0.0.1` fallback). |
+
+## `considerations[]`
+
+A checklist of **cross-cutting dimensions** the agent must validate on every iteration, before
+commit (see the iteration contract, step 3 / `iterate.md` §2b). These are the recurring blind spots —
+things a feature gets specified *without* (desktop-only, LTR-only, Chrome-only, happy-path-only) and
+that then ship broken. Declaring them once here means the agent reports an explicit
+`considerations: mobile ✓ · rtl n/a · …` line every iteration and can't silently forget them.
+
+| Field | Required | Meaning |
+|---|---|---|
+| `name` | ✅ | Short label shown in the summary line (e.g. `mobile`, `rtl`, `cross-browser`, `a11y`). |
+| `check` | ✅ | What to actually verify — phrased as an imperative the agent can act on, not just a topic. |
+| `when` | — | Free-text applicability condition (e.g. "any UI/style change"). The agent decides per iteration; omit ⇒ always considered applicable. |
+| `repos` | — | Restrict applicability to iterations that touch one of these repos (e.g. only frontends). Omit ⇒ any repo. |
+
+Each iteration the agent marks every applicable entry `✓` (verified), `n/a` (not applicable), or `⚠`
+(applicable but unverified / needs follow-up). It's also a **self-improving** list: after `finish`,
+the agent reviews the session and may propose new entries drawn from what bit this task — added only
+with your approval (see `references/finish.md` §11).
+
+Example:
+
+```json
+"considerations": [
+  { "name": "mobile", "when": "any UI/markup/style change in a frontend repo",
+    "check": "Verify the mobile viewport is adapted: responsive layout, tap targets, no horizontal scroll, popups fit.",
+    "repos": ["web"] },
+  { "name": "rtl", "when": "any UI text / layout change",
+    "check": "If the app supports RTL locales, verify the layout mirrors correctly (no hard-coded left/right).",
+    "repos": ["web"] },
+  { "name": "cross-browser", "when": "non-trivial CSS / web-API usage",
+    "check": "Sanity-check Safari/iOS for the change (flex gap, date inputs, sticky, backdrop-filter)." }
+]
+```
 
 ## `repos[]`
 

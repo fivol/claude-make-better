@@ -124,3 +124,24 @@ rm -rf "$ROOT/<worktrees>/<task>"   # leftover .feature.json / empty repo dirs
 Tell the user (in their language): which PR(s) are now **Merged** (with links), that the local base was
 updated & pushed, that worktrees/branches/ports/proxy were cleaned up, and any follow-up (deploy, QA,
 related tickets).
+
+## 11. Reflect — propose new `considerations` from this session
+
+After reporting, look back over **this session's own history** (what was built, what got reworked,
+what review feedback / bugs / "oh, also fix X" came up mid-task) and compare it against the current
+`considerations` list in `.claude/feature/config.json`. The goal is a self-improving checklist: a
+class of issue that bit *this* task — and isn't yet covered — is exactly what should be caught
+automatically next time.
+
+- If you spot a **recurring, cross-cutting** dimension that's missing (e.g. the user kept asking
+  "what about mobile?", a bug turned out to be RTL-only, an empty/error state was forgotten, a
+  migration was nearly missed) → propose adding it. Show the concrete entry you'd append
+  (`name`, `when`, `check`, optional `repos`) and *why this session suggests it*.
+- Be conservative: propose only genuinely **reusable** dimensions, not one-off task details. One or
+  two strong candidates beat a long speculative list. If nothing qualifies, say so and add nothing.
+- **Only on the user's approval**, append the approved entries to the `considerations` array in
+  `.claude/feature/config.json` (read it, add, write it back — don't touch anything else). From the
+  next feature on, the iteration contract (§2b) will validate them automatically.
+
+This step never blocks finish — the merge/cleanup above is already complete. It's a quick "should we
+teach the checklist something?" at the very end.

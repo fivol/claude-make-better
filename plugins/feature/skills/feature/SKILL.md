@@ -138,14 +138,22 @@ Every iteration, **in this order, before you write the chat summary**:
    doubt, run it. Always state the outcome in the summary: `simplify: ✓` or
    `simplify: skipped (minor)` — never omit it silently. (If `/simplify` is not installed, do an
    equivalent manual cleanup pass and say so.)
-3. Per involved repo: `git add` only the files you changed → `git commit` → `git push`. **Spell out
+3. **Considerations — validate every applicable cross-cutting dimension** declared in the config's
+   `considerations` list (e.g. mobile, RTL/i18n, cross-browser). For each entry decide applicability
+   from its `when`/`repos`, and for every *applicable* one actually verify the change satisfies its
+   `check` (don't just assert it). These are recurring blind spots — features get specified for the
+   desktop/happy path and the rest is silently forgotten. **Declare an outcome per applicable entry**
+   in the summary: `considerations: mobile ✓ · rtl n/a · cross-browser ⚠ (needs Safari check)`. Use
+   `✓` (verified), `n/a` (not applicable — say why if non-obvious), or `⚠` (applicable but unverified
+   / follow-up needed). Never omit the line when the list is non-empty. (Empty list ⇒ skip silently.)
+4. Per involved repo: `git add` only the files you changed → `git commit` → `git push`. **Spell out
    git explicitly.**
-4. Ensure the PR exists (create on the first iteration with `--base <base_branch>`; later pushes
+5. Ensure the PR exists (create on the first iteration with `--base <base_branch>`; later pushes
    update it automatically).
-5. **Persist the workspace artifacts** (`iterate.md` §4b): overwrite `<worktrees>/<task>/summary.md`
+6. **Persist the workspace artifacts** (`iterate.md` §4b): overwrite `<worktrees>/<task>/summary.md`
    (what's done / what to consider / what to test) and stamp the current `session_id` into
    `.feature.json` — this is what powers the admin dashboard. Cheap; do it every iteration.
-6. Only now produce the chat output: **summary** + **recommendations** (cleaner approach, scenarios
+7. Only now produce the chat output: **summary** + **recommendations** (cleaner approach, scenarios
    to add, edge cases, what's easy to forget — tied to this task), and **end with a clickable test-
    links block as the last thing** — deep links that open exactly the affected page(s)/endpoint(s):
    full mode `http://<task>.<suffix>/<route>` (with `localhost:<port>` fallback) + the PR link;
@@ -161,6 +169,9 @@ Respond in the user's language; keep the persisted `summary.md` and admin UI con
   `simplify: skipped (minor)` in the summary.
 - Typed `/simplify` (or just said you'd simplify) but didn't actually invoke the skill → no. It must
   run as a real skill invocation, not a mention.
+- Skipped the `considerations` line, or wrote `mobile ✓` without actually checking the mobile layout →
+  no. Each applicable dimension must be really verified and reported (`✓`/`n/a`/`⚠`) — these exist
+  precisely because they're the things that get silently forgotten.
 - About to give the summary before pushing → no. Push first, summary last.
 - About to **edit, commit, or push in a main checkout** (`<workspace-root>/<repo>`) or push straight
   to a base branch → no. All work lives in the `task-<task>` worktree and lands via PR. (Invoking
@@ -183,6 +194,7 @@ Everything is declared in `<workspace-root>/.claude/feature/config.json`:
 | `repos[].deps_symlink` | dirs to symlink from the main checkout (e.g. `node_modules`, `venv`) — never build caches |
 | `repos[].env_copy` | `.env*` files to copy (not symlink) into the worktree |
 | `repos[].dev_start` | dev-server command, `{port}` placeholder, run relative to the worktree (full mode) |
+| `considerations[]` | cross-cutting dimensions to validate every iteration (mobile, RTL/i18n, …); each has `name`, `check`, optional `when`/`repos` — see `configuration.md` |
 | `proxy.domain_suffix` | URL suffix for pretty URLs (default `localhost`) |
 | `proxy.admin_host` / `admin_port` | admin dashboard host/port |
 | `max_live_servers` | reaper cap on concurrent dev servers |

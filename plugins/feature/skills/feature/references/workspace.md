@@ -22,6 +22,11 @@ declaring the repos involved (you can add more later). Schema:
   "worktrees_dir": "worktrees",
   "max_live_servers": 5,
   "reap_sweep_age": 1800,
+  "considerations": [
+    { "name": "mobile", "when": "any UI/markup/style change in a frontend repo",
+      "check": "Verify the mobile viewport is adapted (responsive, tap targets, no horizontal scroll, popups fit).",
+      "repos": ["<frontend-repo>"] }
+  ],
   "proxy": { "enabled": true, "domain_suffix": "localhost",
              "admin_host": "admin.localhost", "admin_port": 7878 },
   "repos": [
@@ -31,6 +36,10 @@ declaring the repos involved (you can add more later). Schema:
   ]
 }
 ```
+
+`considerations` (optional) is a checklist of cross-cutting dimensions the agent validates every
+iteration — see `iterate.md` §2b and the [configuration doc](../../../../docs/feature/configuration.md).
+Leave it out / empty to disable.
 
 Per-repo fields:
 

@@ -3,6 +3,7 @@
   "max_live_servers": 5,
   "reap_sweep_age": 1800,
   "output_language": "the user's language",
+  "considerations": [],
   "proxy": {
     "enabled": true,
     "domain_suffix": "localhost",

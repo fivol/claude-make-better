@@ -50,6 +50,29 @@ When in doubt → run it. Then **declare the outcome** in the iteration summary 
 or `simplify: skipped (minor)`. Never omit it silently — a silent skip is a contract violation, not a
 minor edit.
 
+## 2b. Considerations — validate every applicable cross-cutting dimension
+
+Read the config's `considerations` list (`python3 "$SCRIPTS/config.py" --root "$ROOT"` → `.considerations`,
+or just read `.claude/feature/config.json`). Each entry is a recurring blind spot — something features
+get specified *without* (desktop-only, LTR-only, Chrome-only) and that then ships broken. For each entry:
+
+1. **Decide applicability** from its `when` (free-text condition) and optional `repos` (only applies
+   when one of these repos is touched this iteration). Backend-only diffs usually make UI dimensions
+   `n/a`.
+2. For every **applicable** entry, *actually verify* the change satisfies its `check` — inspect the
+   diff/layout, not a hand-wave. In full mode you can open the pretty URL (emulate a mobile viewport,
+   switch locale/RTL) to confirm; in `--lite` reason from the diff.
+
+**Declare a per-entry outcome** in the summary (step 5), one token each:
+`considerations: mobile ✓ · rtl n/a · cross-browser ⚠ (Safari flex-gap unchecked)`.
+
+- `✓` — applicable and verified.
+- `n/a` — not applicable (give a one-word reason if non-obvious, e.g. `rtl n/a (backend)`).
+- `⚠` — applicable but unverified or needs follow-up; carry it into "What to consider".
+
+Never omit the line when the list is non-empty (empty list ⇒ skip silently). Writing `✓` without
+actually checking is a contract violation.
+
 ## 3. Commit + push — explicit git, per repo
 
 Stage only the files you changed this iteration (leave anything unrelated untouched). Spell out git
@@ -95,6 +118,7 @@ _updated <YYYY-MM-DD HH:MM> · iteration <n> · <repos involved>_
 ## What's done
 - <per-repo bullets of everything done so far>
 - simplify: ✓            # or: skipped (minor)
+- considerations: mobile ✓ · rtl n/a · cross-browser ⚠   # omit only if the list is empty
 
 ## What to consider / risks
 - <cleaner approach, uncovered scenarios, edge cases, what's easy to forget>
@@ -129,7 +153,9 @@ Respond in the user's language. Blocks in this order — **always end with the t
 the last thing the user sees and can click:
 
 1. **What's done** — concise summary of this iteration's changes (per repo if multi-repo). End this
-   block with the simplify status line: `simplify: ✓` or `simplify: skipped (minor)`.
+   block with the simplify status line (`simplify: ✓` or `simplify: skipped (minor)`) and, when the
+   config's `considerations` list is non-empty, the considerations line
+   (`considerations: mobile ✓ · rtl n/a · …`).
 2. **Recommendations / what to consider** — direction for the next iteration tied to this task: a
    cleaner/more correct approach, scenarios still uncovered, edge cases, and what's easy to forget
    (errors, empty/limit states, mobile, i18n, migrations, auth).
