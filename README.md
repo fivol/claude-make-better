@@ -168,6 +168,18 @@ For finer-grained control, the underlying commands are also available directly:
 /systems-review   [count] [subsystem]     # audit only
 ```
 
+## Bonus: `/meta-review` — audit how you work with Claude
+
+Beyond auditing your *codebase*, the plugin also ships **`/meta-review`** — a retrospective audit of your own Claude Code *sessions*. It fans out review subagents across five lenses (workflow & repetition, errors & dead-ends, instruction adherence, skill & automation gaps, tech & approach quality), hands you a color-coded prioritized list (🔴 important / 🟡 significant / 🟢 minor), and applies what you pick. Each run is logged to `.meta-review.jsonl` so the next one resumes from where the last stopped.
+
+```
+/meta-review              # current project, since last review (else past 7 days)
+/meta-review all          # every project under ~/.claude/projects
+/meta-review 14d          # force a 14-day window
+```
+
+Prefers the `meta-cc` MCP tools (if installed) to aggregate session history, with raw session-JSONL parsing as a fallback.
+
 ## Requirements
 
 - Claude Code with plugin marketplace support
