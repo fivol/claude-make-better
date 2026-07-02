@@ -37,6 +37,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.request
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
@@ -499,6 +500,21 @@ class Handler(BaseHTTPRequestHandler):
         return self._send(404, {"error": "not found"})
 
 
+def caddy_serves_admin(px):
+    """True iff Caddy is up AND already serving the admin host — i.e. the pretty
+    http://<admin_host> URL resolves, so we can drop the :port fallback as noise.
+
+    Checks Caddy's local admin API (:2019, the default proxy-setup relies on) and
+    confirms our admin host is in the running config. Any failure ⇒ treat as down.
+    """
+    host = px["admin_host"]
+    try:
+        with urllib.request.urlopen("http://127.0.0.1:2019/config/", timeout=0.6) as r:
+            return host in r.read().decode("utf-8", "replace")
+    except Exception:
+        return False
+
+
 def main():
     args = sys.argv[1:]
     cfg = config.load(argv=args)   # consumes --root from args
@@ -522,8 +538,14 @@ def main():
         return
     Handler.cfg = cfg
     httpd = ThreadingHTTPServer(("127.0.0.1", port), Handler)
-    url = f"http://127.0.0.1:{port}/"
-    print(f"feature admin → {url}  (also http://{px['admin_host']} if caddy is up)")
+    local = f"http://127.0.0.1:{port}/"
+    # Advertise the pretty URL only when it actually resolves: Caddy up AND we bound
+    # the port Caddy proxies the admin host to (a --port override wouldn't match).
+    if port == px["admin_port"] and caddy_serves_admin(px):
+        url = f"http://{px['admin_host']}"
+    else:
+        url = local
+    print(f"feature admin → {url}")
     print(f"root: {cfg['_root']}   Ctrl-C to stop")
     if do_open:
         threading.Timer(0.4, lambda: webbrowser.open(url)).start()

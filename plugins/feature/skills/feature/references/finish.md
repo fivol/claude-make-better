@@ -141,7 +141,7 @@ automatically next time.
   two strong candidates beat a long speculative list. If nothing qualifies, say so and add nothing.
 - **Only on the user's approval**, append the approved entries to the `considerations` array in
   `.claude/feature/config.json` (read it, add, write it back — don't touch anything else). From the
-  next feature on, the iteration contract (§2b) will validate them automatically.
+  next feature on, the `iteration` skill's contract (step 2b) will validate them automatically.
 
 This step never blocks finish — the merge/cleanup above is already complete. It's a quick "should we
 teach the checklist something?" at the very end.

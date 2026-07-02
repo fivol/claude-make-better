@@ -6,17 +6,28 @@ already writes — it never merges or rewrites history.
 
 ## Launch
 
+Easiest — the plugin command (starts it in the background and opens the browser):
+
+```
+/feature-admin
+```
+
+Or run the script directly:
+
 ```bash
 python3 "${CLAUDE_SKILL_DIR}/scripts/admin.py" --open      # opens the browser
 # or just:
 python3 "${CLAUDE_SKILL_DIR}/scripts/admin.py"             # serves on the configured admin_port (default 7878)
 ```
 
-- Pretty URL: **http://&lt;admin_host&gt;** (default `http://admin.localhost`, via the same Caddy the
-  skill uses — the host is always in the generated Caddyfile; it 502s only while the admin is down).
-- Fallback: **http://127.0.0.1:&lt;admin_port&gt;**.
-- `--port N` overrides the port for this run.
-- `--once` prints the workspaces JSON and exits (no server) — handy for scripting.
+On startup it prints **one** URL, picking whichever actually works:
+
+- **http://&lt;admin_host&gt;** (default `http://admin.localhost`) when Caddy is up and already serving
+  the admin host — the skill's own Caddy always has that host in the generated Caddyfile.
+- otherwise **http://127.0.0.1:&lt;admin_port&gt;** (default `7878`) — the plain local URL, always works.
+
+`--port N` overrides the port (forces the local URL, since Caddy proxies the configured `admin_port`).
+`--once` prints the workspaces JSON and exits (no server) — handy for scripting.
 
 Run it from inside the workspace (it self-anchors to the root holding `.claude/feature/config.json`),
 or pass `--root`.
@@ -52,7 +63,7 @@ auto-refreshes every ~7s, preserving the selection, scroll, and any open log.
 | server liveness | `kill -0 <dev_pid>` |
 | log tail | `<worktrees>/<task>/<repo>.dev.log` |
 | resume command | `.feature.json` `session_id`, else session history |
-| summary panel | `<worktrees>/<task>/summary.md` (written each iteration, see `iterate.md` §4b) |
+| summary panel | `<worktrees>/<task>/summary.md` (written each iteration by the `iteration` skill) |
 | last agent message | last assistant text turn in the resumable session's `*.jsonl` |
 
 ## Actions (and the ones deliberately left manual)

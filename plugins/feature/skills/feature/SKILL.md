@@ -15,7 +15,8 @@ conversation itself drives the phases.
 **Invoke it yourself, proactively.** The moment a request in a configured workspace turns into
 building/changing/fixing a feature (not a read-only question), enter this mode *before* writing any
 implementation code — don't wait to be asked for `/feature`. If you're already in Feature Mode this
-session, stay in it; don't re-enter.
+session, stay in it; don't re-enter. On first entry, run the **Preflight** check (below) so a
+missing tool or unauthenticated `gh` surfaces before you start building, not mid-iteration.
 
 **Core contract:** by the time you hand the user a summary, the current iteration is already
 simplified, committed, pushed, and reflected in the PR. The summary is the *last* thing you produce,
@@ -91,6 +92,31 @@ infer it, never choose it yourself — not from the task shape (backend-only, co
 not from phrasing like "quick"/"just a PR", and not when you invoke Feature Mode proactively. Absent
 an explicit `--lite` from the user, the mode is always **full**.
 
+## Preflight — verify the toolchain before building
+
+The **first time** you enter Feature Mode in a session, run the doctor once and act on what it
+finds (it's read-only — safe to run anytime):
+
+```bash
+python3 "${CLAUDE_SKILL_DIR}/scripts/doctor.py"        # add --root "$ROOT" and/or --mode lite
+```
+
+It checks git, the GitHub CLI (`gh` **installed and authenticated**), the workspace config, each
+repo's checkout + dependency dirs, and — in full mode — Caddy for pretty URLs. Every problem is
+tagged with an owner, and you split the work accordingly:
+
+- **`[agent]` — do it yourself now, then continue.** Low-risk, non-privileged fixes: create
+  `.claude/feature/config.json` (Phase 0), `brew install gh` if missing (say you're doing it).
+- **`[user]` — you can't; relay the exact command verbatim** and wait if it's blocking: `gh auth
+  login` (interactive), `proxy-setup.sh` (sudo / binds `:80`), cloning a missing repo, installing a
+  repo's dev dependencies.
+
+Exit `1` means a `[user]` action blocks building — surface those lines and don't push ahead on the
+affected repo until they're resolved. Warnings (dev-server deps, Caddy) are non-blocking — `--lite`
+and plain commits still work; just tell the user how to enable the missing bit. Re-run the doctor
+after the user reports done. Once per session (or when something looks off) is enough — not every
+iteration.
+
 ## Operating mode — phase detection
 
 On every user message while in Feature Mode, decide the phase:
@@ -117,68 +143,40 @@ digraph phases {
 }
 ```
 
-- **Phase 0 — Analyze.** Understand the request, inspect the relevant repos, ask clarifying questions.
-  Ensure `.claude/feature/config.json` exists (create it if not — see `references/workspace.md` §0).
-  Create nothing else yet. Decide which repos are involved and a short kebab-case `<task>` slug.
+- **Phase 0 — Analyze.** Run the **Preflight** doctor (above) if you haven't this session, and
+  handle its findings — do the `[agent]` fixes, relay the `[user]` ones. Understand the request,
+  inspect the relevant repos, ask clarifying questions. Ensure `.claude/feature/config.json` exists
+  (create it if not — see `references/workspace.md` §0). Create nothing else yet. Decide which repos
+  are involved and a short kebab-case `<task>` slug.
 - **Phase 1 — Init workspace** (lazy, only when implementation actually begins). See
   `references/workspace.md`, then immediately run the first iteration.
-- **Phase 2 — Iteration** (every subsequent prompt/edit). See `references/iterate.md`.
+- **Phase 2 — Iteration** (every subsequent prompt/edit): reap, then run the **`iteration` skill**.
+  See `references/iterate.md`.
 - **Phase 3 — Finish** (only on explicit user go-ahead). See `references/finish.md`.
 
-## The iteration contract (non-negotiable)
+## The iteration contract — delegated to the `iteration` skill
 
-Every iteration, **in this order, before you write the chat summary**:
+Phase 2 does **not** re-implement the per-change contract — it is owned by the **`iteration` skill**
+(the single source of truth): implement → **simplify** → commit → push → **PR** → **considerations** →
+test links, with the chat summary **last**. Each Phase 2 turn is just:
 
-1. Implement the requested change(s) inside the task worktree(s).
-2. **Simplify — mandatory after any significant change.** Run the `/simplify` skill on the files
-   changed this iteration (quality only, must not change behavior). Skip it **only** for a genuinely
-   *minor* edit — a one-/few-line change with no new or restructured logic (a constant, copy/string,
-   type, import, config value, comment, version bump, or a pure revert). Anything that adds/changes
-   logic, a component, or touches multiple files is significant → simplify is required. When in
-   doubt, run it. Always state the outcome in the summary: `simplify: ✓` or
-   `simplify: skipped (minor)` — never omit it silently. (If `/simplify` is not installed, do an
-   equivalent manual cleanup pass and say so.)
-3. **Considerations — validate every applicable cross-cutting dimension** declared in the config's
-   `considerations` list (e.g. mobile, RTL/i18n, cross-browser). For each entry decide applicability
-   from its `when`/`repos`, and for every *applicable* one actually verify the change satisfies its
-   `check` (don't just assert it). These are recurring blind spots — features get specified for the
-   desktop/happy path and the rest is silently forgotten. **Declare an outcome per applicable entry**
-   in the summary: `considerations: mobile ✓ · rtl n/a · cross-browser ⚠ (needs Safari check)`. Use
-   `✓` (verified), `n/a` (not applicable — say why if non-obvious), or `⚠` (applicable but unverified
-   / follow-up needed). Never omit the line when the list is non-empty. (Empty list ⇒ skip silently.)
-4. Per involved repo: `git add` only the files you changed → `git commit` → `git push`. **Spell out
-   git explicitly.**
-5. Ensure the PR exists (create on the first iteration with `--base <base_branch>`; later pushes
-   update it automatically).
-6. **Persist the workspace artifacts** (`iterate.md` §4b): overwrite `<worktrees>/<task>/summary.md`
-   (what's done / what to consider / what to test) and stamp the current `session_id` into
-   `.feature.json` — this is what powers the admin dashboard. Cheap; do it every iteration.
-7. Only now produce the chat output: **summary** + **recommendations** (cleaner approach, scenarios
-   to add, edge cases, what's easy to forget — tied to this task), and **end with a clickable test-
-   links block as the last thing** — deep links that open exactly the affected page(s)/endpoint(s):
-   full mode `http://<task>.<suffix>/<route>` (with `localhost:<port>` fallback) + the PR link;
-   `--lite` mode skips app URLs (PR link + how to verify).
+1. **Reap** stale workspaces (`iterate.md` §0) — feature-only lifecycle housekeeping, every turn.
+2. **Invoke the `iteration` skill.** It auto-detects this workspace (a `.feature.json` beside the
+   worktree + the config) and therefore uses each repo's configured `base_branch`, spans **all**
+   involved repos, persists `summary.md` + stamps the session id for the admin dashboard, and emits
+   pretty `http://<task>.<suffix>/…` test links (`--lite` → how-to-verify instead).
 
-Respond in the user's language; keep the persisted `summary.md` and admin UI consistent with it.
+Invoking `feature` is the user's pre-authorization for that per-iteration commit/push/PR. The simplify
+/ commit-every-iteration / push-before-summary rules live in — and are enforced by — the `iteration`
+skill; don't restate them here.
 
 ### Red flags — STOP, you are about to break the contract
 
-- "This change is too small to commit" → no. Every iteration commits (minor edits included).
-- "This change is too small to simplify" → only if it's a genuinely *minor* edit (see step 2). For
-  anything that adds/changes logic, simplify is mandatory — and you must declare `simplify: ✓` or
-  `simplify: skipped (minor)` in the summary.
-- Typed `/simplify` (or just said you'd simplify) but didn't actually invoke the skill → no. It must
-  run as a real skill invocation, not a mention.
-- Skipped the `considerations` line, or wrote `mobile ✓` without actually checking the mobile layout →
-  no. Each applicable dimension must be really verified and reported (`✓`/`n/a`/`⚠`) — these exist
-  precisely because they're the things that get silently forgotten.
-- About to give the summary before pushing → no. Push first, summary last.
 - About to **edit, commit, or push in a main checkout** (`<workspace-root>/<repo>`) or push straight
-  to a base branch → no. All work lives in the `task-<task>` worktree and lands via PR. (Invoking
-  this skill is the user's pre-authorization for per-iteration commit/push/PR — so never work outside
-  the worktree.)
+  to a base branch → no. All work lives in the `task-<task>` worktree and lands via PR.
 - Editing a tracked file (e.g. `package.json`) to change the port → no. Use a CLI flag / copied env
   (see workspace ref).
+- Skipping the reap at the top of the turn → no. It's what stops servers/worktrees from piling up.
 - About to merge without an explicit user go-ahead → no. Finish is user-triggered only.
 
 ## Repos & ports
@@ -194,7 +192,7 @@ Everything is declared in `<workspace-root>/.claude/feature/config.json`:
 | `repos[].deps_symlink` | dirs to symlink from the main checkout (e.g. `node_modules`, `venv`) — never build caches |
 | `repos[].env_copy` | `.env*` files to copy (not symlink) into the worktree |
 | `repos[].dev_start` | dev-server command, `{port}` placeholder, run relative to the worktree (full mode) |
-| `considerations[]` | cross-cutting dimensions to validate every iteration (mobile, RTL/i18n, …); each has `name`, `check`, optional `when`/`repos` — see `configuration.md` |
+| `considerations[]` | cross-cutting dimensions the `iteration` skill validates every iteration (mobile, RTL/i18n, …); each has `name`, `check`, optional `when`/`repos` — see `configuration.md` |
 | `proxy.domain_suffix` | URL suffix for pretty URLs (default `localhost`) |
 | `proxy.admin_host` / `admin_port` | admin dashboard host/port |
 | `max_live_servers` | reaper cap on concurrent dev servers |
@@ -206,17 +204,18 @@ frontend at `http://<task>.<suffix>`) via Caddy — see `references/proxy.md`.
 
 - **Init:** `references/workspace.md` — config schema (§0), worktree creation, dependency symlinks,
   `.env` copy, port allocation, running on the unique port, FE→BE wiring, `.feature.json` state.
-- **Iteration:** `references/iterate.md` — exact simplify→commit→push→PR steps and the output template.
+- **Iteration:** `references/iterate.md` — reap, then delegate to the **`iteration` skill**, which owns
+  the exact simplify→commit→push→PR steps, the considerations block, and the output template.
 - **Finish:** `references/finish.md` — sync the base branch into the task branch first (conflicts
   resolved on the task branch in the worktree, so the PR reflects what lands and CI runs on it), wait
   for green CI, then a now-trivial local merge into the base branch + push (which auto-merges the PR
   and updates the local base) + full cleanup.
 - **Pretty URLs:** `references/proxy.md` — `http://<task>.<suffix>` via Caddy on `:80` (full mode).
   One-time setup: `scripts/proxy-setup.sh`; per-task reload is sudo-free.
-- **Admin dashboard:** `references/admin.md` — `scripts/admin.py` serves a live view of every
-  workspace (repos, PRs+CI, dev-server health & logs, summary, `claude --resume` command) at
-  `http://<admin_host>`. Read-only over the skill's state plus start/stop/reap buttons; finish stays
-  chat-driven.
+- **Admin dashboard:** `references/admin.md` — launch with **`/feature-admin`** (or
+  `scripts/admin.py`); serves a live view of every workspace (repos, PRs+CI, dev-server health & logs,
+  summary, `claude --resume` command) at `http://<admin_host>`. Read-only over the skill's state plus
+  start/stop/reap buttons; finish stays chat-driven.
 
 ## Common mistakes
 

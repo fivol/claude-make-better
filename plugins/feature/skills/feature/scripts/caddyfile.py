@@ -67,18 +67,37 @@ def write(cfg):
     return path
 
 
+def needs_setup(reason):
+    """Tell the user, with a copy-pasteable command, how to enable pretty URLs.
+
+    Printed whenever Caddy can't serve the workspace yet — whether it's not
+    installed at all or installed-but-never-started. Surface this to the user
+    verbatim; the reload is otherwise a silent no-op / cryptic failure.
+    """
+    setup = os.path.join(os.path.dirname(os.path.abspath(__file__)), "proxy-setup.sh")
+    print(
+        f"{reason}\n"
+        f"  Pretty http://<task>.<suffix> URLs need a one-time Caddy setup (asks for sudo once):\n"
+        f'      "{setup}"\n'
+        f"  Until then, use the localhost:<port> URLs (kept in .feature.json)."
+    )
+
+
 def reload(cfg):
     caddy = shutil.which("caddy")
     if not caddy:
-        print("caddy not found — run scripts/proxy-setup.sh first (skipping reload)")
+        needs_setup("caddy is not installed.")
         return
     brew_prefix = os.environ.get("HOMEBREW_PREFIX", "/opt/homebrew")
     cfg_path = os.path.join(brew_prefix, "etc", "Caddyfile")  # imports <worktrees>/Caddyfile
     r = subprocess.run([caddy, "reload", "--config", cfg_path], capture_output=True, text=True)
-    if r.returncode != 0:
-        print(f"caddy reload failed:\n{r.stderr.strip()}")
-    else:
+    if r.returncode == 0:
         print("caddy reloaded")
+        return
+    # Installed but the reload didn't take — almost always: Caddy was never started
+    # as the root :80 service, i.e. proxy-setup.sh hasn't been run yet.
+    tail = (r.stderr.strip().splitlines() or ["admin API unreachable"])[-1]
+    needs_setup(f"caddy is installed but not serving yet (reload failed: {tail}).")
 
 
 def main():

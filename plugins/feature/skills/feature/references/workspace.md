@@ -197,8 +197,12 @@ python3 "$SCRIPTS/caddyfile.py" --root "$ROOT" --reload
 ```
 
 Give the user the pretty URL (`http://<task>.<suffix>/…`) as the primary one; keep `localhost:<port>`
-in state as the fallback. If caddy isn't set up yet, the reload is a no-op — tell the user to run
-`scripts/proxy-setup.sh` once, then fall back to `localhost:<port>`.
+in state as the fallback. **This is the moment Caddy setup surfaces** — it's lazy: nothing about Caddy
+is needed until this first full-mode reload (`--lite` never touches it). If Caddy isn't ready,
+`--reload` prints the exact one-time `proxy-setup.sh` command (installs Caddy + starts it on `:80`,
+sudo once) — relay that command to the user verbatim and use `localhost:<port>` until they've run it.
+The agent can't do this step itself (needs sudo / a privileged `:80` bind); everything after (per-task
+reloads) is automatic and sudo-free.
 
 ## 7. Write workspace state
 
@@ -225,7 +229,8 @@ is summarized:
 ```
 
 Update `pr` once the PR is created (Phase 2), and `dev_pid` whenever you (re)start a server.
-`session_id` is stamped each iteration (see `iterate.md` §4b) so the admin dashboard can resume the
-right chat. In `--lite` mode set `mode: "lite"` and leave `port`, `url`, `dev_pid` as `null`.
+`session_id` is stamped each iteration (by the `iteration` skill, step 5) so the admin dashboard can
+resume the right chat. In `--lite` mode set `mode: "lite"` and leave `port`, `url`, `dev_pid` as `null`.
 
-After init completes, immediately proceed to the **first iteration** (`iterate.md`).
+After init completes, immediately proceed to the **first iteration** — reap, then the `iteration`
+skill (`iterate.md`).
