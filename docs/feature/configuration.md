@@ -83,7 +83,7 @@ wholesale, so your `repos` list replaces the empty default).
 ## `considerations[]`
 
 A checklist of **cross-cutting dimensions** the agent must validate on every iteration, before
-commit (see the iteration contract, step 3 / `iterate.md` §2b). These are the recurring blind spots —
+commit (the `iteration` skill's contract, step 2b). These are the recurring blind spots —
 things a feature gets specified *without* (desktop-only, LTR-only, Chrome-only, happy-path-only) and
 that then ship broken. Declaring them once here means the agent reports an explicit
 `considerations: mobile ✓ · rtl n/a · …` line every iteration and can't silently forget them.
@@ -140,12 +140,9 @@ A repo's **checkout folder name must equal its `name`**, located directly under 
 
 ## Inspecting the merged result
 
-```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/skills/feature/scripts/config.py" --root /path/to/workspace
-```
-
-Prints the merged config as JSON, including the resolved `_root`, `_override_path`, and
-`_override_applied` — handy when a setting doesn't seem to apply.
+Ask the agent to inspect the merged config — it runs the skill's `config.py` and prints the result as
+JSON, including the resolved `_root`, `_override_path`, and `_override_applied`. Handy when a setting
+doesn't seem to apply: you'll see whether your file was picked up at all.
 
 ## Environment overrides
 
