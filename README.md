@@ -230,20 +230,18 @@ It's config-driven, so it works for any single- or multi-repo workspace.
 
    ```json
    {
-     "proxy": { "domain_suffix": "localhost", "admin_port": 7878 },
      "repos": [
-       { "name": "api", "base_branch": "main", "port_band": 18000, "frontend": false,
-         "deps_symlink": ["venv"], "env_copy": [".env"],
-         "dev_start": "venv/bin/python manage.py runserver 0.0.0.0:{port}" },
-       { "name": "web", "base_branch": "main", "port_band": 13000, "frontend": true,
-         "deps_symlink": ["node_modules"], "env_copy": [".env", ".env.local"],
+       { "name": "web", "base_branch": "main", "port_band": 3000, "frontend": true,
+         "deps_symlink": ["node_modules"],
          "dev_start": "node_modules/.bin/next dev -p {port}" }
      ]
    }
    ```
 
-   The workspace root is the folder holding your repo checkouts (each as a sibling folder named after
-   its `name`). The config's presence *is* what marks that root.
+   The workspace root is the folder holding your repo checkouts (each a sibling folder named after its
+   `name`); the config's presence marks that root. Add more repos for a multi-repo feature — full
+   schema (proxy, `considerations`, env-copy, reaper…) in
+   **[configuration.md](docs/feature/configuration.md)**.
 
 2. Just ask for a feature — "let's add a dark-mode toggle", "fix the upload limit". The agent enters
    Feature Mode, spins up the worktree(s) + server(s), and from then on every iteration is
@@ -257,63 +255,23 @@ It's config-driven, so it works for any single- or multi-repo workspace.
 
 ## How it works
 
-| Phase | What happens |
-|---|---|
-| **0 · Analyze** | Preflight the toolchain (git, `gh` + auth, config, repos, Caddy) — the agent fixes what it can and tells you the rest — then understand the request and confirm scope. Creates nothing yet. |
-| **1 · Init** | `git worktree add` off the fresh base, symlink deps, copy `.env`, allocate a port, start the detached dev server, refresh the proxy. |
-| **2 · Iterate** | The **`iteration` skill** runs the contract: implement → `/simplify` → validate the config's `considerations` → commit → push → ensure PR → persist `summary.md` + session id → summary with deep test links. Repeats per prompt. |
-| **3 · Finish** | Sync base into the task branch (conflicts resolved in the worktree so the PR reflects what lands), wait for green CI, merge into base, push, tear down worktree/branch/port/proxy. |
+**Analyze** (preflight the toolchain, confirm scope) → **Init** (worktree, deps, port, detached dev
+server, proxy) → **Iterate** (the `iteration` skill: implement → `/simplify` → considerations → commit
+→ push → PR → deep test links, every prompt) → **Finish** (sync base, green CI, merge, clean up).
 
-Dev servers are launched **detached** (their own session, reparented to launchd) so they survive a
-one-shot `claude -p` turn, and a self-throttling **reaper** runs each turn to cap live servers and
-tear down workspaces whose PRs have merged — so nothing piles up.
+## Docs
 
-## The `iteration` skill
+- **[Workflow & the `iteration` skill](docs/feature/workflow.md)** — the phases, the per-iteration
+  contract, the reusable **standalone** `iteration` skill, and the considerations checklist.
+- **[Dashboard, URLs & commands](docs/feature/dashboard.md)** — the admin dashboard (`/feature-admin`),
+  pretty `*.localhost` URLs, and the `/feature-doctor` preflight.
+- **[Configuration](docs/feature/configuration.md)** — full config schema: per-repo fields,
+  `considerations`, proxy, reaper caps, env overrides.
 
-The per-iteration contract is its own reusable skill (`feature:iteration`) that `feature` delegates to
-— so you can also use it **standalone**, outside Feature Mode. Ask to "ship this" / "open a PR for this
-change" on any branch and it runs the same disciplined loop: `/simplify` → commit → push →
-open/update the PR → **considerations** (validate the config's cross-cutting checklist — mobile, RTL,
-cross-browser…) → a clickable test/verify block, with the summary produced last. Inside a feature
-workspace it also persists the dashboard artifacts and hands out pretty URLs; on a bare branch it just
-targets the repo's default base.
-
-## Admin dashboard
-
-```
-/feature-admin
-```
-
-A dependency-free local dashboard — one live view of every workspace. It opens at
-`http://admin.localhost` when the proxy is up, otherwise `http://127.0.0.1:7878`. Each workspace is a
-card: repos with ahead/behind + diffstat, PR state + CI rollup, dev-server health with start/stop and a
-log tail, the agent-written summary with click-persisted test checkboxes, and a copy-able
-`claude --resume <session-id>` to continue any task's chat. Read-only over the skill's state —
-merging stays chat-driven.
-
-## Pretty `*.localhost` URLs (optional)
-
-Pretty `http://<task>.localhost` URLs (instead of `http://localhost:<port>`) need
-[Caddy](https://caddyserver.com/) listening on `:80`. The agent wires up and reloads the proxy for you
-every task — the **one** thing it can't do is the first-time privileged setup, which needs `sudo` to
-bind `:80`. When that's required, the agent prints the exact one-time `proxy-setup.sh` command for you
-to run once (it installs Caddy and starts it on `:80`); after that, per-task reloads are automatic and
-sudo-free. Skip it entirely and everything still works on plain `localhost:<port>` URLs.
-
-## Commands
-
-Both are optional shortcuts — the flow already invokes them at the right time:
-
-- **`/feature-doctor`** — preflight the toolchain (git, `gh` + auth, config, repos, deps, Caddy); the
-  agent fixes what it can and tells you the rest. Runs automatically on entering Feature Mode.
-- **`/feature-admin`** — open the admin dashboard (all workspaces) in your browser.
-
-## Configuration & requirements
-
-Full config schema (per-repo fields, proxy, reaper caps, worktrees dir): **[docs/feature/configuration.md](docs/feature/configuration.md)**.
+## Requirements
 
 - Claude Code with plugin marketplace support
-- `git` (with `git worktree`), `gh` (GitHub CLI, for PRs)
+- `git` (with `git worktree`), `gh` (GitHub CLI, authenticated — for PRs)
 - `python3` — used by the skill's scripts
 - macOS/Linux. Pretty URLs additionally need Caddy + Homebrew (optional)
 
