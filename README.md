@@ -10,6 +10,30 @@
 |---|---|---|
 | [**make-better**](#make-better) | `/plugin install make-better@make-better` | Audit & improve your codebase on autopilot — one command, nine topics, fixes on a branch. |
 | [**feature**](#feature) | `/plugin install feature@make-better` | Build each task in an isolated git-worktree workspace, ship it through a review gate into a PR, then merge it — four composable skills, all config-driven. |
+| [**hermes-tweet**](#hermes-tweet) | `/plugin install hermes-tweet@make-better` | Set up and safely operate the maintained Hermes Tweet integration. |
+
+---
+
+# hermes-tweet
+
+> **Set up and safely operate the maintained Hermes Tweet integration.**
+
+This thin Claude Code plugin guides installation, configuration, troubleshooting,
+read-first routing, and approval-gated actions. It does not vendor the Hermes
+runtime. The `tweet_explore`, `tweet_read`, and `tweet_action` tools run inside
+Hermes Agent after installing the maintained upstream plugin.
+
+## Install
+
+```
+/plugin marketplace add fivol/claude-make-better
+/plugin install hermes-tweet@make-better
+```
+
+Ask Claude Code to set up Hermes Tweet. It will use
+`hermes plugins install Xquik-dev/hermes-tweet --enable`, keep credentials out
+of chat, and leave `HERMES_TWEET_ENABLE_ACTIONS` disabled until you approve a
+specific operation.
 
 ---
 
