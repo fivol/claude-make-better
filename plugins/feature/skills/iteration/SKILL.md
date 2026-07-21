@@ -12,6 +12,28 @@ The disciplined per-change loop, and the **single source of truth** for it:
 The chat summary is produced **last**, after the change is already pushed and in the PR. Never lead
 with the summary.
 
+## The rule that governs considerations: act on it, don't note it
+
+A nuance you can act on now, you act on now. The instant you notice one — an edge case, an
+empty/error/limit state, a cleaner or more correct approach, an applicable cross-cutting dimension
+that isn't satisfied — the default is to **fold it into this iteration's implementation, before you
+commit.** Not next iteration, not a footnote.
+
+The **Considerations** block (step 6) is the *residue of that triage* — only what you consciously
+chose **not** to do, each with a one-line reason — never a parking lot for work you saw but skipped.
+Listing a fix you could have made is not addressing it; "I saw it and mentioned it every iteration"
+is not doing it.
+
+**Triage each nuance the moment it surfaces:**
+- **Do it now (default)** when it's in scope for this change, part of making what you just built
+  correct/complete, and doesn't need a product decision — even if that means a slightly bigger diff.
+- **Defer** (→ Considerations, *with a reason*) **only** when it genuinely (a) needs a user/product
+  decision, (b) is out of the task's scope, (c) is a large separate effort, or (d) can't be acted on
+  in this mode (e.g. a browser you can't drive here). The reason names *why not now*, not just *what*.
+
+Borderline between do-now and defer → **do it now.** This rule governs both step 2b (cross-cutting
+dimensions) and the step-6 Considerations block below.
+
 ## Two ways this runs
 
 Detect the mode once, at the start:
@@ -80,12 +102,20 @@ silently**. Each entry is a recurring blind spot — something features get spec
 2. For every **applicable** entry, *actually verify* the change satisfies its `check` — inspect the
    diff/layout, don't hand-wave. Full mode: open the pretty URL (emulate a mobile viewport, switch
    locale/RTL) to confirm; `--lite`/standalone: reason from the diff.
+3. **If an applicable dimension is unmet, satisfying it is part of this iteration** — an applicable
+   dimension that fails is a defect in the change you're making, not a follow-up. Adapt the diff now,
+   then mark it `✓`. It stays `⚠` *only* when you genuinely can't act on it here (needs a decision, or
+   this mode can't drive it — e.g. Safari from `--lite`/standalone), and then it carries the reason.
 
 **Declare a per-entry outcome** in the summary (step 6), one token each:
-`considerations: mobile ✓ · rtl n/a · cross-browser ⚠ (Safari flex-gap unchecked)` — `✓` verified ·
-`n/a` not applicable (one-word reason if non-obvious) · `⚠` applicable but unverified / needs
-follow-up (carry it into **Considerations**). Never omit the line when the list is non-empty; writing
-`✓` without actually checking is a contract violation.
+`considerations: mobile ✓ · rtl n/a · cross-browser ⚠ (Safari flex-gap, no browser here)` — `✓`
+verified (including verified *after* the iteration adapted the change to satisfy it) · `n/a` not
+applicable (one-word reason if non-obvious) · `⚠` applicable but you genuinely couldn't act on it here
+— needs a decision or this mode can't verify it; **always with a reason**, and carried into
+**Considerations**. `⚠` is the narrow exception, not an escape hatch: a dimension you can see is unmet
+gets *fixed and marked `✓`*, never downgraded to a footnote. Never omit the line when the list is
+non-empty; writing `✓` without actually checking, or `⚠` for something you could have fixed this
+iteration, is a contract violation.
 
 ### 3. Commit + push — explicit git, per repo
 Stage only the files you changed (leave unrelated files untouched). Spell out git explicitly — do not
@@ -126,7 +156,7 @@ _updated <YYYY-MM-DD HH:MM> · iteration <n> · <repos involved>_
 - considerations: mobile ✓ · rtl n/a · cross-browser ⚠   # omit only if the config list is empty
 
 ## Considerations / risks
-- <cleaner approach, uncovered scenarios, edge cases, what's easy to forget>
+- <only what you deliberately deferred, each with why — not work you could have done this iteration>
 
 ## What to test
 - [ ] <concrete check the reviewer clicks through>
@@ -159,9 +189,11 @@ last thing the user can click:
 1. **What's done** — concise per-repo summary of this iteration. End with the simplify status line
    (`simplify: ✓` / `simplify: skipped (minor)`) and, when the config's `considerations` list is
    non-empty, the considerations line (`considerations: mobile ✓ · rtl n/a · …`).
-2. **Considerations** — tied to this change: a cleaner/more correct approach, scenarios still
-   uncovered, edge cases, and what's easy to forget (errors, empty/limit states, mobile, i18n,
-   migrations, auth).
+2. **Considerations** — the *residue after triage* (see "act on it, don't note it" above): only what
+   you deliberately did **not** fold into this change, each with a one-line reason it was deferred
+   (needs a decision / out of scope / large separate effort / can't act on it here). Anything you
+   *could* have addressed now must already be in **What's done** — not parked here. If triage left
+   nothing to defer, say so in a line; an empty block is a success signal, not a gap to fill.
 3. **🔗 Test / verify** — the LAST block.
    - *feature context:* clickable deep links that open exactly the affected page(s)/endpoint(s):
      `http://<task>.<suffix>/<affected-route>` (+ `http://localhost:<port>/…` fallback), API URLs for
@@ -177,6 +209,12 @@ The next user prompt starts a new iteration → back to step 1.
 - Said you'd simplify but didn't invoke `/simplify` → no. It must be a real skill invocation.
 - Skipped the `considerations` line (non-empty config), or wrote `mobile ✓` without actually checking →
   no. Each applicable dimension must be really verified and reported (`✓`/`n/a`/`⚠`).
+- Surfaced a nuance (edge case, cleaner approach, unmet dimension) and wrote it into **Considerations**
+  instead of folding it into the diff → no. If you can act on it now, it belongs in the change, not
+  the footnotes. Deferral is the exception and must name a real reason (needs a decision / out of scope
+  / large separate effort / can't act here).
+- Marked a dimension `⚠` for something you could have fixed this iteration → no. `⚠` is only "couldn't
+  act on it here", with a reason; a dimension you can see is unmet gets fixed and marked `✓`.
 - About to write the summary before pushing → no. Push first, summary last.
 - About to commit onto a base/default branch → no. Feature context: use the `task-<task>` worktree
   branch. Standalone: branch off first.
