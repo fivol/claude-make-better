@@ -82,8 +82,9 @@ wholesale, so your `repos` list replaces the empty default).
 
 ## `considerations[]`
 
-A checklist of **cross-cutting dimensions** the agent must validate on every iteration, before
-commit (the `iteration` skill's contract, step 2b). These are the recurring blind spots —
+A checklist of **cross-cutting dimensions** the agent must validate — and, when one is unmet, satisfy
+in the same iteration — on every iteration, before commit (the `iteration` skill's contract, step 2b).
+These are the recurring blind spots —
 things a feature gets specified *without* (desktop-only, LTR-only, Chrome-only, happy-path-only) and
 that then ship broken. Declaring them once here means the agent reports an explicit
 `considerations: mobile ✓ · rtl n/a · …` line every iteration and can't silently forget them.
@@ -95,10 +96,13 @@ that then ship broken. Declaring them once here means the agent reports an expli
 | `when` | — | Free-text applicability condition (e.g. "any UI/style change"). The agent decides per iteration; omit ⇒ always considered applicable. |
 | `repos` | — | Restrict applicability to iterations that touch one of these repos (e.g. only frontends). Omit ⇒ any repo. |
 
-Each iteration the agent marks every applicable entry `✓` (verified), `n/a` (not applicable), or `⚠`
-(applicable but unverified / needs follow-up). It's also a **self-improving** list: after `finish`,
-the agent reviews the session and may propose new entries drawn from what bit this task — added only
-with your approval (see `references/finish.md` §11).
+Each iteration the agent marks every applicable entry `✓` (verified — including verified *after* the
+iteration adapted the change to satisfy it), `n/a` (not applicable), or `⚠` (applicable but it
+genuinely couldn't act on it here — needs a decision or this mode can't verify it; always with a
+reason). An applicable dimension the agent can see is *unmet* gets fixed **in that same iteration**,
+not deferred — `⚠` is the narrow exception, not an escape hatch. It's also a **self-improving** list:
+after `finish`, the agent reviews the session and may propose new entries drawn from what bit this
+task — added only with your approval (see `references/finish.md` §11).
 
 Example:
 

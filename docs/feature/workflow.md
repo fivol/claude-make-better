@@ -42,9 +42,10 @@ Every iteration, in order, with the chat summary **last**:
    behavior). Mandatory after any significant change; may skip a genuinely minor one — and it declares
    which (`simplify: ✓` / `simplify: skipped (minor)`).
 3. **Considerations** — validate each applicable cross-cutting dimension from the config's
-   `considerations` list (mobile, RTL, cross-browser…) and report an explicit
-   `considerations: mobile ✓ · rtl n/a · …` line. Empty list ⇒ skipped. See
-   [configuration.md](configuration.md#considerations) for how to declare them.
+   `considerations` list (mobile, RTL, cross-browser…), **fix any that are unmet in this same
+   iteration** (not defer them), and report an explicit `considerations: mobile ✓ · rtl n/a · …` line.
+   Empty list ⇒ skipped. See [configuration.md](configuration.md#considerations) for how to declare
+   them.
 4. **Commit + push** — explicit git, per involved repo.
 5. **Ensure the PR** exists — created on the first iteration against the repo's base branch; later
    pushes update it automatically.
