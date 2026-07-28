@@ -8,6 +8,11 @@ Reads:
 Override file may be flat (applies to all skills) or have a "review" / "discover"
 section. Common top-level keys are merged first, then the skill-specific section.
 
+Standing instructions:
+  `instructions` is strictly an array of strings. The free-form companion file
+  <repo-root>/.claude/make-better/INSTRUCTIONS.md is always applied when it
+  exists; its path and presence are reported in "_meta".
+
 Topic prompt resolution:
   Each entry in topics_required + topics_optional is a name. The resolver looks
   for "<name>.md" first under <repo-root>/.claude/make-better/topics/, then
@@ -83,6 +88,15 @@ def deep_merge(base: dict, over: dict) -> dict:
 
 merged = deep_merge(defaults, override)
 
+instructions = merged.get("instructions", [])
+if not isinstance(instructions, list) or any(not isinstance(x, str) for x in instructions):
+    print(
+        f"ERROR: 'instructions' in {override_path} must be an array of strings",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+instructions_path = user_dir / "INSTRUCTIONS.md"
+
 user_topics_dir = user_dir / "topics"
 plugin_topics_dir = skill_dir / "topics"
 all_topic_names: list[str] = []
@@ -111,6 +125,8 @@ merged["_meta"] = {
     "defaults_path": str(skill_dir / "defaults.json"),
     "override_path": str(override_path),
     "override_applied": override_path.exists(),
+    "instructions_path": str(instructions_path),
+    "instructions_applied": instructions_path.exists(),
     "user_topics_dir": str(user_topics_dir),
     "plugin_topics_dir": str(plugin_topics_dir),
     "repo_root": str(repo_root),

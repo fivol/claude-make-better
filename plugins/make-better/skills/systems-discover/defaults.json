@@ -1,5 +1,6 @@
 {
   "registry_path": "docs/SYSTEMS.md",
+  "instructions": [],
   "max_parallel_scan_agents": 8,
   "scan_agent_model": "opus",
   "main_agent_model": "opus",

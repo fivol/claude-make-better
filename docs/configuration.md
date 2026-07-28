@@ -8,6 +8,7 @@ Make Better reads built-in defaults from the installed plugin and merges in any 
 <repo>/.claude/
 └── make-better/
     ├── config.json              # this file
+    ├── INSTRUCTIONS.md          # optional — standing rules, see below
     └── topics/                  # optional — see custom-topics.md
         └── *.md
 ```
@@ -21,6 +22,7 @@ Every key is optional. Anything missing falls back to the plugin's default. Nest
   // -------- Common (apply to both skills) --------
   "registry_path": "docs/SYSTEMS.md",
   "auto_discover_when_stale_days": 30,    // /make-better triggers a refresh after this many days
+  "instructions": [],                     // standing rules for every agent — see below
 
   // -------- /systems-review-specific --------
   "review": {
@@ -71,6 +73,50 @@ Every key is optional. Anything missing falls back to the plugin's default. Nest
   }
 }
 ```
+
+## Standing instructions
+
+Rules that apply to **everything Make Better does** in this repo — a `CLAUDE.md` scoped to the
+plugin. They're handed verbatim to every sub-agent (review, topic, implement, scan), so a rule you
+write once shapes both what gets flagged and how fixes are written.
+
+Two sources, both optional, both applied **whenever present**:
+
+| Source | Shape | Use it for |
+|---|---|---|
+| `instructions` in `config.json` | array of strings — strictly (a bare string aborts the loader) | short one-line rules |
+| `.claude/make-better/INSTRUCTIONS.md` | free-form markdown, injected verbatim | anything longer: prose, snippets, sections |
+
+No config key points at `INSTRUCTIONS.md` and nothing switches it off: **if the file exists, it is
+injected**. Delete it to stop applying it.
+
+```jsonc
+{
+  "instructions": [
+    "Public APIs must keep their docstrings — never drop one while refactoring",
+    "Prefer widening an existing helper over adding a near-duplicate"
+  ],
+  "review": {
+    // A section list REPLACES the common one (arrays are replaced, not merged).
+    // Repeat any common rule you still want here.
+    "instructions": [
+      "Public APIs must keep their docstrings — never drop one while refactoring",
+      "Flag any TODO older than a month as a completeness finding"
+    ]
+  }
+}
+```
+
+What they're good for per skill:
+
+- **`/systems-review`** — house rules the auditors should enforce and the implementers must not break
+  ("no new runtime deps", "never touch generated migrations", "tests use the shared fixtures").
+- **`/systems-discover`** — how your team carves and names systems ("group by bounded context, not by
+  folder", "never propose a system per HTTP handler").
+
+They are constraints, not a checklist: agents obey them silently and never report them item by item.
+Verify the loader sees yours with `_meta.instructions_applied` in the merged JSON (see
+[Inspecting the merged result](#inspecting-the-merged-result)).
 
 ## Discovery and gitignore
 
@@ -192,6 +238,8 @@ It prints the merged JSON. The `_meta` section tells you whether your override f
   "defaults_path": "/path/to/plugin/.../defaults.json",
   "override_path": "/your/repo/.claude/make-better/config.json",
   "override_applied": true,
+  "instructions_path": "/your/repo/.claude/make-better/INSTRUCTIONS.md",
+  "instructions_applied": true,
   "user_topics_dir": "/your/repo/.claude/make-better/topics",
   "plugin_topics_dir": "/path/to/plugin/.../topics",
   "repo_root": "/your/repo"

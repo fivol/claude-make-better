@@ -31,6 +31,14 @@ bash ${CLAUDE_SKILL_DIR}/bin/load-config.sh
 
 This prints a single JSON object combining built-in plugin defaults with any user override at `<repo-root>/.claude/make-better/config.json`. All knobs come from this object. Do not read any config file directly — always go through the loader.
 
+### Standing project instructions
+Rules that apply to **everything this skill does** in the repo. Two optional sources, both applied whenever present:
+
+- `instructions` — array of strings in the merged config (strictly an array; the loader exits with an error otherwise). A `discover:` section's list **replaces** the common top-level one rather than extending it.
+- `<repo-root>/.claude/make-better/INSTRUCTIONS.md` — free-form markdown. `_meta.instructions_applied` says whether it exists; read it from `_meta.instructions_path`.
+
+If either is non-empty, assemble both into one `project_instructions` text block, apply it to your own merge/naming decisions, and pass it **verbatim** to every scan agent. Typical use here: how the team names or carves up systems ("group by bounded context, not by folder", "never propose a system per HTTP handler"). Both empty ⇒ omit the block entirely.
+
 ### Model self-check
 
 This skill is declared with `model: opus` in its frontmatter, but Claude Code versions that don't honor that field would silently fall back to the user's session model. Verify your own identity before doing real work.
@@ -148,6 +156,7 @@ For each scan agent:
   - `existing_systems`: filter `existing_systems` to those whose `areas:` overlap this subsystem (any path under `<subsystem_root>`)
   - `incremental_since`: in `incremental` mode, the minimum of `last_discovered_by_section` for sections containing systems that overlap this subsystem (or `1970-01-01` if no such systems exist). In `rebuild` mode, this is irrelevant — the agent considers every file.
   - `doc_hints`
+  - `project_instructions` (omit when empty — see "Standing project instructions")
   - `size_hints` (from config)
   - `methodology_overrides`: empty initially. May be set during Phase 4 iteration.
 
@@ -418,5 +427,6 @@ On ANY exit (success, abort, exception):
 - `${CLAUDE_SKILL_DIR}/prompts/scan-agent.md` — scan agent prompt.
 - `${CLAUDE_SKILL_DIR}/prompts/main-merge.md` — cross-cutting merge guidance.
 - `<repo-root>/.claude/make-better/config.json` — optional user override.
+- `<repo-root>/.claude/make-better/INSTRUCTIONS.md` — optional standing project instructions, injected into every scan agent whenever the file exists.
 - `docs/SYSTEMS.md` — the registry being maintained.
 - `docs/.systems-discover.lock` — runtime lockfile (gitignored).

@@ -79,6 +79,21 @@ def check_config(cfg):
     )
 
 
+def check_instructions(cfg):
+    """Report standing instructions — informational, never a failure."""
+    sources = []
+    if cfg["_instructions_applied"]:
+        sources.append("INSTRUCTIONS.md")
+    n = len(cfg.get("instructions") or []) + sum(
+        len(r.get("instructions") or []) for r in cfg.get("repos") or []
+    )
+    if n:
+        sources.append(f"{n} config rule(s)")
+    if not sources:
+        return None  # nothing configured is the normal case — stay silent
+    return _r("instructions", "standing instructions", OK, " + ".join(sources))
+
+
 def _dep_hint(checkout, dep):
     d = dep.lower()
     if "node_modules" in d:
@@ -158,6 +173,9 @@ def collect(cfg, mode="full"):
     if auth:
         results.append(auth)
     results.append(check_config(cfg))
+    instr = check_instructions(cfg)
+    if instr:
+        results.append(instr)
     results.extend(check_repos(cfg))
     if mode == "full":
         results.append(check_caddy(cfg))

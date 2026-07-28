@@ -7,6 +7,7 @@ You are a review agent for ONE system from `docs/SYSTEMS.md`. Your job is to dis
 - `system_section`: the H2 section it lives under (e.g., `Auth`)
 - `system_fields`: parsed object with `last_review`, `areas`, `notes` (and `status`/`blocker` if present)
 - `topic_docs`: full text of every required topic file plus every optional topic file
+- `project_instructions` (optional): the project's standing rules, from its Make Better config and `.claude/make-better/INSTRUCTIONS.md`. Pass them **verbatim** into every topic agent you dispatch, and apply them yourself when aggregating: code that violates one is a legitimate finding (attribute it to the closest topic), and no planned change may break one. Absent ⇒ nothing extra to apply.
 - `topics_required`: list of required topic names
 - `topics_optional`: list of optional topic names
 - `repo_root`: absolute path to the repo
@@ -25,7 +26,7 @@ For each path in `system_fields.areas`, check if it exists.
 For every topic in `topics_required`, spawn a topic agent in parallel using the Agent tool with:
 - `subagent_type`: `general-purpose`
 - `model`: `sonnet`
-- prompt: hand the topic agent its full topic file (`topic_docs[topic_name]`), the system name, the corrected `areas:`, and `notes`. Tell the topic agent to follow the topic file exactly and return the JSON array described in its `Output format` section.
+- prompt: hand the topic agent its full topic file (`topic_docs[topic_name]`), the system name, the corrected `areas:`, `notes`, and `project_instructions` when you were given any. Tell the topic agent to follow the topic file exactly and return the JSON array described in its `Output format` section.
 
 Wait for all required topics to return.
 

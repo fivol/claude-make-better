@@ -45,6 +45,26 @@ feature context the worktree is already on its `task-<task>` branch — just use
 Let `WT` = the checkout you work in: each involved repo's worktree in feature context, or the current
 repo in standalone. Run steps per involved repo.
 
+### 0. Standing instructions — load them before you touch code
+Project rules that hold for **every** iteration (stack conventions, what must never be touched, style
+mandates). Assemble them once per iteration, before implementing:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/skills/feature/scripts/config.py" --root "$ROOT" \
+        --instructions --repos "<the repos you touch, comma-separated>"   # omit --repos standalone
+```
+
+Two sources, both optional, both applied **whenever present**: `<root>/.claude/feature/INSTRUCTIONS.md`
+(free-form markdown, injected verbatim if the file exists) and the config's `instructions` +
+`repos[].instructions` arrays (a repo's rules apply only when that repo is touched). Empty output ⇒
+nothing configured ⇒ skip silently.
+
+Treat every line as a **standing constraint on the work**, weighted like the user's own instructions:
+obey it while implementing, simplifying, and committing. Unlike `considerations` (step 2b) they are
+**not** a checklist — never report them per-item and never add an `instructions:` line to the summary.
+If a rule and the user's explicit request for this iteration genuinely conflict, follow the user and
+note the deviation in one line under **Considerations**.
+
 ### 1. Implement
 Make the requested change(s) in `WT` only — never the main checkout or a base branch. **Read every
 file before you `Edit` it** (Edit/Write require a prior Read this session; editing unread files is the
@@ -173,6 +193,10 @@ last thing the user can click:
 The next user prompt starts a new iteration → back to step 1.
 
 ## Red flags — STOP, you're about to break the contract
+- Implementing without loading the standing instructions (step 0) → no. They're constraints on the
+  code you're about to write, so they're worthless read afterwards.
+- Reporting standing instructions as a per-item checklist → no. That's `considerations`; instructions
+  are silent constraints.
 - "Too small to commit" → no. Every iteration commits (minor edits included).
 - Said you'd simplify but didn't invoke `/simplify` → no. It must be a real skill invocation.
 - Skipped the `considerations` line (non-empty config), or wrote `mobile ✓` without actually checking →

@@ -37,6 +37,10 @@ Phase 2 to it. Because it's a standalone skill, you can also use it **outside Fe
 
 Every iteration, in order, with the chat summary **last**:
 
+0. **Load the standing instructions** — the config's `instructions` / `repos[].instructions` plus
+   `.claude/feature/INSTRUCTIONS.md` (injected whenever the file exists), so the project's house rules
+   constrain the code before it's written. Nothing configured ⇒ skipped silently. See
+   [configuration.md](configuration.md#instructions).
 1. **Implement** the change in the worktree (or the current branch, standalone).
 2. **Simplify** — a real `/simplify` invocation on the changed files (quality only, must not change
    behavior). Mandatory after any significant change; may skip a genuinely minor one — and it declares
@@ -55,9 +59,11 @@ Inside a feature workspace it also persists `summary.md` + the session id (which
 [dashboard](dashboard.md)) and hands out pretty `http://<task>.localhost/…` URLs. On a bare branch
 (standalone) it targets the repo's default base and gives how-to-verify steps instead of app URLs.
 
-## Self-improving considerations
+## Self-improving considerations and instructions
 
-At **finish**, the agent reviews the session and may propose new `considerations` entries drawn from
-what bit this task — a recurring "what about mobile?", an RTL-only bug, a forgotten empty state. They're
-added to your config only with your approval, so over time the checklist teaches itself your recurring
-blind spots. See [configuration.md](configuration.md#considerations).
+At **finish**, the agent reviews the session and may propose new entries drawn from what bit this task
+— a recurring "what about mobile?", an RTL-only bug, a forgotten empty state → `considerations`; a
+correction with one right answer every time ("always reuse the shared `Dropdown`") → `instructions`.
+The split is *check you re-run* vs *rule you follow*. They're added to your config only with your
+approval, so over time it teaches itself your recurring blind spots and house rules. See
+[configuration.md](configuration.md#considerations).

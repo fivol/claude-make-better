@@ -22,6 +22,7 @@ declaring the repos involved (you can add more later). Schema:
   "worktrees_dir": "worktrees",
   "max_live_servers": 5,
   "reap_sweep_age": 1800,
+  "instructions": ["<standing rule every iteration must obey>"],
   "considerations": [
     { "name": "mobile", "when": "any UI/markup/style change in a frontend repo",
       "check": "Verify the mobile viewport is adapted (responsive, tap targets, no horizontal scroll, popups fit).",
@@ -41,6 +42,11 @@ declaring the repos involved (you can add more later). Schema:
 iteration — see `iterate.md` §2b and the [configuration doc](../../../../docs/feature/configuration.md).
 Leave it out / empty to disable.
 
+`instructions` (optional) is an array of **standing rules** every iteration must obey — constraints,
+not a checklist, so they're never reported per item. `repos[].instructions` scopes rules to one repo,
+and `<ROOT>/.claude/feature/INSTRUCTIONS.md` (free-form markdown) is injected verbatim whenever it
+exists. Don't invent entries at init — write only rules the user actually stated.
+
 Per-repo fields:
 
 | Field | Meaning |
@@ -52,6 +58,7 @@ Per-repo fields:
 | `deps_symlink` | dirs symlinked from the main checkout (`node_modules`, `venv`, …) — never build caches |
 | `env_copy` | `.env*` files to copy (not symlink) into the worktree |
 | `dev_start` | dev-server command with a `{port}` placeholder, run with the worktree as cwd (full mode) |
+| `instructions` | array of standing rules that apply only when this repo is touched |
 
 Pick a short kebab-case `<task>` slug describing the change (e.g. `upload-limit-100mb`). Determine the
 involved repos. **One feature may span several repos** — repeat every step below for each.

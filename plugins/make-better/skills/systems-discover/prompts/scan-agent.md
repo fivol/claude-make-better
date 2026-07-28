@@ -9,6 +9,7 @@ You scan ONE top-level subsystem of the repository (e.g., `app/`, `server/`, `we
 - `existing_systems`: list of systems already in `SYSTEMS.md` whose `areas:` overlap this subsystem. Each entry: `{ name, section, areas, notes, last_review?, status?, blocker? }`. Empty list when registry is fresh or in `rebuild` for this scope.
 - `incremental_since`: ISO date string. In `incremental` mode, only consider files changed in git since this date PLUS any files not currently mapped to any existing system. In `rebuild` mode, consider every file under the root.
 - `doc_hints`: contents of relevant docs from `docs/AGENT_MAP/`, `docs/CONTRACTS/`, `docs/PRODUCT/`, and the subsystem's own README if present. Use as starting context, not authority.
+- `project_instructions`: optional. The project's standing rules, from its Make Better config and `.claude/make-better/INSTRUCTIONS.md`. Binding on how you carve and name systems — they outrank your own defaults, but never the explicit `size_hints`/`methodology_overrides` numbers. Absent ⇒ nothing extra to apply.
 - `size_hints`: `{ typical_min_files, typical_max_files, split_threshold_files }`.
 - `methodology_overrides`: optional. The user may steer subsequent runs with hints like "make systems smaller", "treat all design tokens as one system", "split sync more aggressively". When present, follow them.
 
