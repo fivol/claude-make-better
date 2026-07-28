@@ -1,7 +1,7 @@
 {
   "name": "feature",
   "description": "Build each feature/fix in an isolated git-worktree workspace: unique port, pretty *.localhost URL, detached dev servers, PR-per-iteration, and a live admin dashboard. Config-driven for any multi-repo workspace via .claude/feature/config.json.",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "author": {
     "name": "fivol",
     "url": "https://github.com/fivol"

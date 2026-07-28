@@ -9,13 +9,13 @@
       "name": "make-better",
       "description": "Continuously audit and improve an existing codebase. One command (/make-better) discovers subsystems and reviews stale ones across bugs, DRY, architecture, consistency, efficiency, tests, docs, and security. Plus /meta-review for retrospective audits of your own Claude Code sessions.",
       "source": "./plugins/make-better",
-      "version": "0.11.0"
+      "version": "0.12.0"
     },
     {
       "name": "feature",
       "description": "Build each feature/fix in an isolated git-worktree workspace: unique port, pretty *.localhost URL, detached dev servers, PR-per-iteration, and a live admin dashboard. Config-driven via .claude/feature/config.json. Includes the reusable `iteration` skill (simplify → commit → push → PR → considerations).",
       "source": "./plugins/feature",
-      "version": "0.3.0"
+      "version": "0.4.0"
     }
   ]
 }
