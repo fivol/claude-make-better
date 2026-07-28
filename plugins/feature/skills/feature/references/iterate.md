@@ -29,6 +29,8 @@ Invoke the **`iteration` skill** — it owns implement → simplify → commit �
 worktree + the config), and therefore:
 
 - uses each involved repo's configured `base_branch` and spans **all** repos in the task;
+- loads the workspace's standing `instructions` (config arrays + `.claude/feature/INSTRUCTIONS.md`)
+  before writing any code — its step 0;
 - persists `<worktrees>/<task>/summary.md` + stamps the session id into `.feature.json` (this is what
   powers the admin dashboard);
 - emits pretty `http://<task>.<suffix>/…` deep links (with `localhost:<port>` fallback) as the closing

@@ -23,8 +23,15 @@ Config resolution:
   are deep-merged (override wins; lists are replaced wholesale, so a user
   `repos` list replaces the empty default).
 
+Standing instructions (rules every iteration must follow) come from two places,
+both optional and both always applied when present:
+    - <root>/.claude/feature/INSTRUCTIONS.md     (free-form markdown)
+    - config `instructions` / `repos[].instructions`  (arrays of strings)
+
 This module is import-safe (no side effects) and also runnable:
-    config.py [--root DIR]      # print the merged config as JSON
+    config.py [--root DIR]                        # merged config as JSON
+    config.py [--root DIR] --instructions [--repos a,b]
+                                                  # assembled instructions block
 """
 import json
 import os
@@ -36,19 +43,25 @@ SKILL_DIR = os.path.dirname(SCRIPTS_DIR)
 DEFAULTS_PATH = os.path.join(SKILL_DIR, "defaults.json")
 
 CONFIG_RELPATH = os.path.join(".claude", "feature", "config.json")
+INSTRUCTIONS_RELPATH = os.path.join(".claude", "feature", "INSTRUCTIONS.md")
+
+
+def take_value_arg(argv, flag):
+    """Pop `<flag> VALUE` from argv (in place) and return VALUE, or None."""
+    if flag in argv:
+        i = argv.index(flag)
+        try:
+            value = argv[i + 1]
+        except IndexError:
+            sys.exit(f"config: {flag} needs an argument")
+        del argv[i:i + 2]
+        return value
+    return None
 
 
 def take_root_arg(argv):
     """Pop `--root DIR` from argv (in place) and return DIR, or None."""
-    if "--root" in argv:
-        i = argv.index("--root")
-        try:
-            root = argv[i + 1]
-        except IndexError:
-            sys.exit("config: --root needs a directory argument")
-        del argv[i:i + 2]
-        return root
-    return None
+    return take_value_arg(argv, "--root")
 
 
 def _walk_up(start, predicate):
@@ -100,6 +113,21 @@ def _deep_merge(base, over):
     return out
 
 
+def _require_str_list(value, where, path):
+    """`instructions` is strictly an array of strings — no bare string shorthand."""
+    if not isinstance(value, list) or any(not isinstance(x, str) for x in value):
+        sys.exit(f"config: `{where}` in {path} must be an array of strings")
+
+
+def _validate_instructions(cfg, path):
+    _require_str_list(cfg.get("instructions", []), "instructions", path)
+    for r in cfg.get("repos") or []:
+        if isinstance(r, dict) and "instructions" in r:
+            _require_str_list(
+                r["instructions"], f"repos[{r.get('name', '?')}].instructions", path
+            )
+
+
 def load(root=None, argv=None):
     """Return the merged config dict. `root` resolved if not given.
 
@@ -124,9 +152,14 @@ def load(root=None, argv=None):
             sys.exit(f"config: {override_path} must be a JSON object")
         merged = _deep_merge(defaults, user)
 
+    _validate_instructions(merged, override_path)
+
+    instructions_path = os.path.join(root, INSTRUCTIONS_RELPATH)
     merged["_root"] = root
     merged["_override_path"] = override_path
     merged["_override_applied"] = os.path.isfile(override_path)
+    merged["_instructions_path"] = instructions_path
+    merged["_instructions_applied"] = os.path.isfile(instructions_path)
     return merged
 
 
@@ -183,9 +216,63 @@ def frontend_sort_key(cfg):
     return key
 
 
+INSTRUCTIONS_HEADER = "=== PROJECT INSTRUCTIONS (standing rules — always follow) ==="
+
+
+def instructions(cfg, repos_touched=None):
+    """Assemble the standing-instructions block. Empty string when nothing is set.
+
+    Sources, in order: the workspace `INSTRUCTIONS.md` (whole file, verbatim, whenever
+    it exists), the config's top-level `instructions`, then each involved repo's
+    `repos[].instructions`. `repos_touched` limits the per-repo sections to the repos an
+    iteration actually touches; None ⇒ every configured repo.
+    """
+    root = cfg.get("_root") or ""
+    path = cfg.get("_instructions_path") or os.path.join(root, INSTRUCTIONS_RELPATH)
+    blocks = []
+
+    if os.path.isfile(path):
+        try:
+            with open(path) as f:
+                text = f.read().strip()
+        except OSError as e:
+            sys.exit(f"config: cannot read {path}: {e}")
+        if text:
+            label = os.path.relpath(path, root) if root else path
+            blocks.append(f"--- {label} ---\n{text}")
+
+    def bullets(rules):
+        return "\n".join(f"- {r}" for r in rules if r.strip())
+
+    workspace = bullets(cfg.get("instructions") or [])
+    if workspace:
+        blocks.append("--- config: instructions ---\n" + workspace)
+
+    wanted = set(repos_touched) if repos_touched is not None else None
+    for r in cfg.get("repos") or []:
+        name = r.get("name")
+        if not name or (wanted is not None and name not in wanted):
+            continue
+        rules = bullets(r.get("instructions") or [])
+        if rules:
+            blocks.append(f"--- config: repos[{name}].instructions ---\n" + rules)
+
+    return f"{INSTRUCTIONS_HEADER}\n\n" + "\n\n".join(blocks) if blocks else ""
+
+
 def main():
     argv = sys.argv[1:]
+    repos_arg = take_value_arg(argv, "--repos")
+    want_instructions = "--instructions" in argv
+    if want_instructions:
+        argv.remove("--instructions")
     cfg = load(argv=argv)
+    if want_instructions:
+        touched = [s.strip() for s in (repos_arg or "").split(",") if s.strip()]
+        block = instructions(cfg, touched or None)
+        if block:
+            print(block)
+        return
     print(json.dumps(cfg, indent=2, sort_keys=True))
 
 

@@ -8,6 +8,11 @@ Reads:
 Override file may be flat (applies to all skills) or have a "review" / "discover"
 section. Common top-level keys are merged first, then the skill-specific section.
 
+Standing instructions:
+  `instructions` is strictly an array of strings. The free-form companion file
+  <repo-root>/.claude/make-better/INSTRUCTIONS.md is always applied when it
+  exists; its path and presence are reported in "_meta".
+
 Output: pretty-printed JSON object with all knobs the skill needs. Exit code is
 always 0 unless defaults.json is missing or unparseable (those are bugs).
 """
@@ -74,11 +79,23 @@ def deep_merge(base: dict, over: dict) -> dict:
 
 
 merged = deep_merge(defaults, override)
+
+instructions = merged.get("instructions", [])
+if not isinstance(instructions, list) or any(not isinstance(x, str) for x in instructions):
+    print(
+        f"ERROR: 'instructions' in {override_path} must be an array of strings",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+instructions_path = user_dir / "INSTRUCTIONS.md"
+
 merged["_meta"] = {
     "skill": SECTION,
     "defaults_path": str(skill_dir / "defaults.json"),
     "override_path": str(override_path),
     "override_applied": override_path.exists(),
+    "instructions_path": str(instructions_path),
+    "instructions_applied": instructions_path.exists(),
     "repo_root": str(repo_root),
 }
 print(json.dumps(merged, indent=2))

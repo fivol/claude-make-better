@@ -55,6 +55,18 @@ If it's missing when implementation begins, **create it first** (Phase 0) — se
 
 A repo's **checkout folder name == its `name`**, directly under the workspace root.
 
+### Standing instructions (optional)
+
+Rules that hold for **every** iteration live next to the config and are applied by the `iteration`
+skill (its step 0) whenever they exist — never restate them per request:
+
+- `<workspace-root>/.claude/feature/INSTRUCTIONS.md` — free-form markdown, injected verbatim.
+- config `instructions` / `repos[].instructions` — arrays of strings (per-repo rules apply only when
+  that repo is touched).
+
+They are **constraints**, not a checklist: unlike `considerations`, they're never reported per item.
+Don't create them proactively — add them only when the user states a recurring rule.
+
 ## Script paths
 
 All scripts ship inside this skill. Reference them via the skill dir so they work regardless of where
@@ -101,7 +113,8 @@ finds (it's read-only — safe to run anytime):
 python3 "${CLAUDE_SKILL_DIR}/scripts/doctor.py"        # add --root "$ROOT" and/or --mode lite
 ```
 
-It checks git, the GitHub CLI (`gh` **installed and authenticated**), the workspace config, each
+It checks git, the GitHub CLI (`gh` **installed and authenticated**), the workspace config (plus a
+line naming the standing instructions in force, when any), each
 repo's checkout + dependency dirs, and — in full mode — Caddy for pretty URLs. Every problem is
 tagged with an owner, and you split the work accordingly:
 
@@ -192,6 +205,7 @@ Everything is declared in `<workspace-root>/.claude/feature/config.json`:
 | `repos[].deps_symlink` | dirs to symlink from the main checkout (e.g. `node_modules`, `venv`) — never build caches |
 | `repos[].env_copy` | `.env*` files to copy (not symlink) into the worktree |
 | `repos[].dev_start` | dev-server command, `{port}` placeholder, run relative to the worktree (full mode) |
+| `instructions[]` | standing rules every iteration must obey (array of strings); `repos[].instructions` scopes rules to one repo. Companion free-form file: `.claude/feature/INSTRUCTIONS.md` — see `configuration.md` |
 | `considerations[]` | cross-cutting dimensions the `iteration` skill validates every iteration (mobile, RTL/i18n, …); each has `name`, `check`, optional `when`/`repos` — see `configuration.md` |
 | `proxy.domain_suffix` | URL suffix for pretty URLs (default `localhost`) |
 | `proxy.admin_host` / `admin_port` | admin dashboard host/port |

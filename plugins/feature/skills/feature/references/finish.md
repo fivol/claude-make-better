@@ -125,7 +125,7 @@ Tell the user (in their language): which PR(s) are now **Merged** (with links), 
 updated & pushed, that worktrees/branches/ports/proxy were cleaned up, and any follow-up (deploy, QA,
 related tickets).
 
-## 11. Reflect — propose new `considerations` from this session
+## 11. Reflect — propose new `considerations` / `instructions` from this session
 
 After reporting, look back over **this session's own history** (what was built, what got reworked,
 what review feedback / bugs / "oh, also fix X" came up mid-task) and compare it against the current
@@ -137,11 +137,17 @@ automatically next time.
   "what about mobile?", a bug turned out to be RTL-only, an empty/error state was forgotten, a
   migration was nearly missed) → propose adding it. Show the concrete entry you'd append
   (`name`, `when`, `check`, optional `repos`) and *why this session suggests it*.
-- Be conservative: propose only genuinely **reusable** dimensions, not one-off task details. One or
+- If instead the session surfaced a **standing rule** — something the user corrected you on that has
+  one right answer every time ("always use the shared `Dropdown`", "never edit generated migrations")
+  → propose it for `instructions` rather than `considerations`. The split: a *check* you re-verify per
+  change is a consideration; a *rule* you simply follow is an instruction. Per-repo rules go to that
+  repo's `repos[].instructions`.
+- Be conservative: propose only genuinely **reusable** entries, not one-off task details. One or
   two strong candidates beat a long speculative list. If nothing qualifies, say so and add nothing.
-- **Only on the user's approval**, append the approved entries to the `considerations` array in
+- **Only on the user's approval**, append the approved entries to the matching array in
   `.claude/feature/config.json` (read it, add, write it back — don't touch anything else). From the
-  next feature on, the `iteration` skill's contract (step 2b) will validate them automatically.
+  next feature on, the `iteration` skill picks them up automatically: considerations are validated in
+  step 2b, instructions are loaded in step 0.
 
 This step never blocks finish — the merge/cleanup above is already complete. It's a quick "should we
 teach the checklist something?" at the very end.

@@ -114,6 +114,7 @@ The most useful knobs:
 - `review.default_systems_per_run` — how many systems to review when count isn't specified. Default: `3`.
 - `review.topics_required` — topics that always run on every system. Listing topics here **replaces** the default list — include built-ins you want to keep alongside your custom ones.
 - `review.topics_optional` — topics that run when applicable (currently just `security`). Same replace-not-merge semantics.
+- `instructions` — standing house rules (array of strings) handed to every sub-agent, so they're enforced during review *and* respected while fixes are written. For anything longer than a line, put it in `.claude/make-better/INSTRUCTIONS.md` — that file is injected whenever it exists.
 
 Copy and edit:
 
@@ -240,8 +241,12 @@ It's config-driven, so it works for any single- or multi-repo workspace.
 
    The workspace root is the folder holding your repo checkouts (each a sibling folder named after its
    `name`); the config's presence marks that root. Add more repos for a multi-repo feature — full
-   schema (proxy, `considerations`, env-copy, reaper…) in
+   schema (proxy, `instructions`, `considerations`, env-copy, reaper…) in
    **[configuration.md](docs/feature/configuration.md)**.
+
+   Standing house rules go in `instructions` (an array of strings, workspace-wide or per repo) or in
+   `.claude/feature/INSTRUCTIONS.md` — free-form markdown that's injected into every iteration
+   whenever the file exists, so you never restate the same rule per request.
 
 2. Just ask for a feature — "let's add a dark-mode toggle", "fix the upload limit". The agent enters
    Feature Mode, spins up the worktree(s) + server(s), and from then on every iteration is
@@ -266,7 +271,7 @@ server, proxy) → **Iterate** (the `iteration` skill: implement → `/simplify`
 - **[Dashboard, URLs & commands](docs/feature/dashboard.md)** — the admin dashboard (`/feature-admin`),
   pretty `*.localhost` URLs, and the `/feature-doctor` preflight.
 - **[Configuration](docs/feature/configuration.md)** — full config schema: per-repo fields,
-  `considerations`, proxy, reaper caps, env overrides.
+  `instructions` + `INSTRUCTIONS.md`, `considerations`, proxy, reaper caps, env overrides.
 
 ## Requirements
 

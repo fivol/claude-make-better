@@ -48,7 +48,8 @@ Once set up, the host scheme is:
 Both are optional shortcuts — Feature Mode already invokes them at the right time:
 
 - **`/feature-doctor`** — preflight the toolchain: `git`, `gh` (installed **and** authenticated), the
-  workspace config, each repo's checkout + dependency dirs, and (full mode) Caddy. Each problem is
+  workspace config (and the standing instructions in force, when any), each repo's checkout +
+  dependency dirs, and (full mode) Caddy. Each problem is
   tagged **[agent]** (the agent fixes it now — create the config, install a missing CLI) or **[user]**
   (only you can — `gh auth login`, clone a missing repo, the one-time proxy setup). Runs automatically
   on entering Feature Mode; run it yourself anytime to re-check.

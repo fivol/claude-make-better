@@ -35,6 +35,14 @@ This prints a single JSON object combining built-in plugin defaults with any use
 
 Apply user `count` only if it is `<= max_systems_per_run`; otherwise clamp and inform the user.
 
+### Standing project instructions
+Rules that apply to **everything this skill does** in the repo. Two optional sources, both applied whenever present:
+
+- `instructions` — array of strings in the merged config (strictly an array; the loader exits with an error otherwise). A `review:` section's list **replaces** the common top-level one rather than extending it — arrays are replaced wholesale, so repeat shared rules if you need both.
+- `<repo-root>/.claude/make-better/INSTRUCTIONS.md` — free-form markdown. `_meta.instructions_applied` says whether it exists; read it from `_meta.instructions_path`.
+
+If either is non-empty, assemble both into one `project_instructions` text block and pass it **verbatim** to every sub-agent you dispatch (review, topic, implement), alongside their other inputs. They are constraints on the work: obey them when planning and writing code, and treat existing code that violates one as a legitimate finding. They are not a checklist — never report them per item. Both empty ⇒ omit the block entirely.
+
 ### User-facing language
 The config has a `user_language` field (default `"en"`). Render **every user-facing message** in this language: status lines, plan mode content, AskUserQuestion prompts and option labels, the final report, error messages. The instructions in this skill, JSON shapes exchanged with sub-agents, commit messages, branch names, and code stay in English regardless. Translate only what the user reads.
 
@@ -143,7 +151,7 @@ For each picked system, dispatch a review agent in parallel via the Agent tool. 
 For each review agent:
 - `subagent_type`: `general-purpose`
 - `model`: `<review_agent_model>` (default `opus`)
-- prompt: contents of `${CLAUDE_SKILL_DIR}/prompts/review-agent.md` plus the system fields, the topic docs (read each path listed in `_topics` from the loader output — see "Topic resolution" below), the topic lists, repo root, and today's date.
+- prompt: contents of `${CLAUDE_SKILL_DIR}/prompts/review-agent.md` plus the system fields, the topic docs (read each path listed in `_topics` from the loader output — see "Topic resolution" below), the topic lists, repo root, today's date, and `project_instructions` when non-empty (see "Standing project instructions").
 
 Collect all returns. For each:
 - `verdict: "proceed"` → keep the system in the active set.
@@ -290,7 +298,7 @@ Dispatch an implement agent via the `Agent` tool with the harness creating the w
 - `subagent_type`: `general-purpose`
 - `model`: `<implement_agent_model>` (default `opus`)
 - `isolation`: `"worktree"`
-- prompt: contents of `prompts/implement-agent.md` plus `system_name`, `detailed_plan`, `areas`, and an instruction: *"You are running inside an isolated git worktree the harness already created for you. Use `git rev-parse --show-toplevel` to find your worktree path; that's where you commit. Don't try to create another worktree."*
+- prompt: contents of `prompts/implement-agent.md` plus `system_name`, `detailed_plan`, `areas`, `project_instructions` (when non-empty), and an instruction: *"You are running inside an isolated git worktree the harness already created for you. Use `git rev-parse --show-toplevel` to find your worktree path; that's where you commit. Don't try to create another worktree."*
 
 Cap concurrency at `max_parallel_implement_agents`.
 
@@ -324,7 +332,7 @@ Once the worktree exists, dispatch the implement agent **without** `isolation`:
 - `subagent_type`: `general-purpose`
 - `model`: `<implement_agent_model>`
 - (no `isolation`)
-- prompt: contents of `prompts/implement-agent.md` plus `system_name`, `detailed_plan`, `areas`, and `worktree_path` plus an instruction: *"You are NOT in your worktree's directory by default — your bash CWD is the main checkout. For every command that should affect the worktree (edits, git, tests), prefix paths with `$worktree_path` or use `git -C "$worktree_path" ...`. The branch you commit on is `<desired_branch>` and is already the worktree's checked-out branch."*
+- prompt: contents of `prompts/implement-agent.md` plus `system_name`, `detailed_plan`, `areas`, `project_instructions` (when non-empty), and `worktree_path` plus an instruction: *"You are NOT in your worktree's directory by default — your bash CWD is the main checkout. For every command that should affect the worktree (edits, git, tests), prefix paths with `$worktree_path` or use `git -C "$worktree_path" ...`. The branch you commit on is `<desired_branch>` and is already the worktree's checked-out branch."*
 
 In manual mode, `branch = desired_branch` and `path = worktree_path` — you computed both, no need to read them back from the agent's return value (but still capture `commit_sha` from the return).
 
@@ -548,6 +556,7 @@ When dispatching, always read prompt content from `_topics[<name>]` — never fr
 - `${CLAUDE_SKILL_DIR}/prompts/implement-agent.md` — implement agent prompt.
 - `${CLAUDE_SKILL_DIR}/topics/*.md` — built-in topic prompts.
 - `<repo-root>/.claude/make-better/config.json` — optional user override.
+- `<repo-root>/.claude/make-better/INSTRUCTIONS.md` — optional standing project instructions, injected into every sub-agent whenever the file exists.
 - `<repo-root>/.claude/make-better/topics/*.md` — optional user topic prompts (shadow built-ins; new names extend the topic set).
 - `docs/SYSTEMS.md` — the registry (managed externally by `/systems-discover` and humans).
 - `docs/.systems-review.*.lock` — runtime lockfiles, gitignored.
