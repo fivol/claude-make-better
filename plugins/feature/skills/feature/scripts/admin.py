@@ -24,9 +24,14 @@ holds .claude/feature/config.json):
   --open   open the dashboard in the default browser after starting
   --once   print the workspaces JSON to stdout and exit (no server)
 
+Starting it while it is already up is a no-op: it prints the same URL and exits
+0 rather than failing to bind. That keeps `/feature-admin` working once the
+dashboard runs from autostart.py (a launchd user agent, so it survives logout).
+
 Nothing here mutates git history or merges anything: destructive steps
 (finish/free-ports) are surfaced as copy-able commands, never one-click.
 """
+import errno
 import glob
 import html
 import json
@@ -454,6 +459,11 @@ class Handler(BaseHTTPRequestHandler):
         wtroot = config.worktrees_root(self.cfg)
         if u.path == "/":
             return self._send(200, PAGE, "text/html")
+        if u.path == "/api/whoami":
+            # Identity probe: lets a second launch (or autostart.py) recognise an
+            # already-running dashboard instead of colliding on the port.
+            return self._send(200, {"app": "feature-admin", "root": self.cfg["_root"],
+                                    "pid": os.getpid()})
         if u.path == "/api/workspaces":
             return self._send(200, {"root": self.cfg["_root"],
                                     "suffix": config.proxy(self.cfg)["domain_suffix"],
@@ -515,6 +525,76 @@ def caddy_serves_admin(px):
         return False
 
 
+def whoami(port, timeout=1.0):
+    """Identify a dashboard already holding `port` (via /api/whoami), else None."""
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/whoami", timeout=timeout) as r:
+            data = json.loads(r.read().decode("utf-8", "replace"))
+        return data if data.get("app") == "feature-admin" else None
+    except Exception:
+        return None
+
+
+def pid_on_port(port):
+    """PID listening on `port`, or None — the fallback identity for old instances."""
+    p = reap.run(["lsof", "-tnP", f"-iTCP:{port}", "-sTCP:LISTEN"])
+    for line in (p.stdout or "").split():
+        try:
+            return int(line)
+        except ValueError:
+            continue
+    return None
+
+
+def answering(port, timeout=1.0):
+    """Is *a* dashboard serving `port`? Tolerates versions predating /api/whoami.
+
+    Those still identify themselves by the page they serve, so a dashboard left
+    running across a plugin upgrade isn't mistaken for a stranger on the port.
+    Their `root` is unknowable — reported as None.
+    """
+    who = whoami(port, timeout)
+    if who:
+        return who
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=timeout) as r:
+            body = r.read(4096).decode("utf-8", "replace")
+        if "<title>feature workspaces</title>" in body:
+            return {"app": "feature-admin", "root": None, "pid": pid_on_port(port)}
+    except Exception:
+        pass
+    return None
+
+
+def attach_to_running(cfg, port, url, do_open):
+    """The port is taken — adopt a healthy sibling instead of dying on the collision.
+
+    Routine once the dashboard runs from autostart (see autostart.py): launching it
+    again should be a no-op that prints where it already lives.
+    """
+    other = answering(port)
+    if not other:
+        print(f"admin: port {port} is busy with something that isn't a feature admin — "
+              "stop it, or pass --port N", file=sys.stderr)
+        return 1
+    other_root = other.get("root")
+    # An older instance can't report its root; assume it's this one (a single port
+    # serves a single workspace anyway) rather than refusing to attach.
+    if other_root is None or os.path.realpath(other_root) == os.path.realpath(cfg["_root"]):
+        print(f"feature admin → {url}")
+        pid = other.get("pid") or "?"
+        aged = "" if other_root else " (started by an older version)"
+        print(f"root: {cfg['_root']}   already running (pid {pid}){aged}")
+        if do_open:
+            webbrowser.open(url)
+        return 0
+    # Don't print a URL we'd be lying about — it serves someone else's workspace.
+    print(f"admin: port {port} already serves {other.get('root')} (pid {other.get('pid')}), not "
+          f"{cfg['_root']}.\nRe-point it with: autostart.py --install   (or serve this root on "
+          "another port with --port N)", file=sys.stderr)
+    return 1
+
+
 def main():
     args = sys.argv[1:]
     cfg = config.load(argv=args)   # consumes --root from args
@@ -535,9 +615,8 @@ def main():
 
     if once:
         print(json.dumps(collect(cfg), indent=2))
-        return
+        return 0
     Handler.cfg = cfg
-    httpd = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     local = f"http://127.0.0.1:{port}/"
     # Advertise the pretty URL only when it actually resolves: Caddy up AND we bound
     # the port Caddy proxies the admin host to (a --port override wouldn't match).
@@ -545,6 +624,12 @@ def main():
         url = f"http://{px['admin_host']}"
     else:
         url = local
+    try:
+        httpd = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    except OSError as e:
+        if e.errno != errno.EADDRINUSE:
+            raise
+        return attach_to_running(cfg, port, url, do_open)
     print(f"feature admin → {url}")
     print(f"root: {cfg['_root']}   Ctrl-C to stop")
     if do_open:
@@ -553,6 +638,7 @@ def main():
         httpd.serve_forever()
     except KeyboardInterrupt:
         print("\nbye")
+    return 0
 
 
 # --------------------------------------------------------------- frontend
@@ -896,4 +982,4 @@ load();setInterval(load,7000);
 """
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

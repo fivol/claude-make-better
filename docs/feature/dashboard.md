@@ -26,6 +26,27 @@ Each workspace is a card:
 It's read-only over the skill's own state plus start / stop / reap buttons — merging stays chat-driven.
 The view auto-refreshes and preserves your selection.
 
+Running `/feature-admin` again when it's already up is harmless — it just prints the URL.
+
+### Keep it running (macOS)
+
+The first time you open the dashboard, the agent offers to keep it running: that installs a **user
+LaunchAgent** (no sudo) so `http://admin.localhost` is up after every login, even with no Claude
+session open. Say no and it never asks again.
+
+To drive it yourself:
+
+```bash
+python3 <plugin>/skills/feature/scripts/autostart.py --status
+python3 <plugin>/skills/feature/scripts/autostart.py --install
+python3 <plugin>/skills/feature/scripts/autostart.py --uninstall
+```
+
+It installs `~/Library/LaunchAgents/com.fivol.feature-admin.plist` plus a
+`~/.claude/bin/feature-admin` wrapper, logs to `~/Library/Logs/feature-admin.log`, and survives
+plugin upgrades (the wrapper re-resolves the newest installed version at launch). `--uninstall`
+removes all of it.
+
 ## Pretty `*.localhost` URLs (optional)
 
 Pretty `http://<task>.localhost` URLs (instead of `http://localhost:<port>`) need

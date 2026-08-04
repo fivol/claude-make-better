@@ -229,7 +229,9 @@ frontend at `http://<task>.<suffix>`) via Caddy — see `references/proxy.md`.
 - **Admin dashboard:** `references/admin.md` — launch with **`/feature-admin`** (or
   `scripts/admin.py`); serves a live view of every workspace (repos, PRs+CI, dev-server health & logs,
   summary, `claude --resume` command) at `http://<admin_host>`. Read-only over the skill's state plus
-  start/stop/reap buttons; finish stays chat-driven.
+  start/stop/reap buttons; finish stays chat-driven. Relaunching it while it's up is a no-op.
+  `scripts/autostart.py` keeps it running across logins (macOS launchd user agent) — `/feature-admin`
+  offers it once and remembers a "no"; never install it without asking.
 
 ## Common mistakes
 

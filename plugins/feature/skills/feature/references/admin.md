@@ -32,6 +32,44 @@ On startup it prints **one** URL, picking whichever actually works:
 Run it from inside the workspace (it self-anchors to the root holding `.claude/feature/config.json`),
 or pass `--root`.
 
+Launching it while it is already up is a **no-op**: it recognises the running instance (via
+`/api/whoami`), prints the same URL and exits 0. A collision only errors out when the port belongs
+to something else, or to a dashboard serving a *different* workspace root — both say what to do.
+
+## Autostart (optional, macOS)
+
+`scripts/autostart.py` installs the dashboard as a **user LaunchAgent** — no sudo, no root — so
+`http://admin.localhost` is up after every login, with or without Claude running. `/feature-admin`
+checks this and offers it once; you can also drive it directly:
+
+```bash
+python3 "${CLAUDE_SKILL_DIR}/scripts/autostart.py" --status      # ✓/⚠/✗ + what to do (exit 0 = healthy)
+python3 "${CLAUDE_SKILL_DIR}/scripts/autostart.py" --install     # install (or re-point at this root)
+python3 "${CLAUDE_SKILL_DIR}/scripts/autostart.py" --uninstall   # remove the job and its wrapper
+```
+
+It writes exactly three things, all removable with `--uninstall`:
+
+| Path | What |
+|---|---|
+| `~/Library/LaunchAgents/com.fivol.feature-admin.plist` | the launchd job (`RunAtLoad` + `KeepAlive`) |
+| `~/.claude/bin/feature-admin` | wrapper the job runs |
+| `~/Library/Logs/feature-admin.log` | stdout/stderr of the dashboard |
+
+Three things it gets right that a hand-written plist usually doesn't:
+
+- **Survives plugin upgrades** — the wrapper re-resolves the newest installed plugin version at every
+  launch instead of pinning today's `…/cache/make-better/feature/<version>/…` path.
+- **`gh` and `caddy` are on `PATH`** — launchd's default `PATH` has no Homebrew, so PR state and CI
+  checks would silently go missing.
+- **Root is explicit** — the workspace is baked in as `$FEATURE_ROOT` (config.py resolution step 2),
+  since a service has no meaningful cwd. `--status` flags it when that root no longer matches.
+
+Installing takes over a dashboard you started by hand (same port), so nothing collides. Declining the
+offer is remembered in `<root>/.claude/feature/autostart.json` — the skill won't ask again.
+
+Non-macOS is reported as unsupported and simply skipped; everything else works the same.
+
 ## Layout
 
 Master-detail: a **left list** of equal-height cards (live dot, task name, age, and compact badges —
