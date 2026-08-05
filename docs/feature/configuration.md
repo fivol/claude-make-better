@@ -35,6 +35,11 @@ wholesale, so your `repos` list replaces the empty default).
       "repos": ["web"]
     }
   ],
+  "pr_feedback": {
+    "enabled": true,
+    "reply": "always",
+    "resolve": "never"
+  },
   "proxy": {
     "enabled": true,
     "domain_suffix": "localhost",
@@ -75,6 +80,7 @@ wholesale, so your `repos` list replaces the empty default).
 | `output_language` | `"the user's language"` | Hint for the language of agent output and the persisted `summary.md`. |
 | `instructions` | `[]` | Standing rules every iteration must obey — **strictly an array of strings** (see below). |
 | `considerations` | `[]` | Cross-cutting dimensions the agent validates every iteration (see below). Empty ⇒ feature off. |
+| `pr_feedback` | see below | How the reviewer's PR comments are picked up and answered each iteration. On by default. |
 | `proxy` | see below | Pretty-URL / admin-dashboard settings. |
 | `repos` | `[]` | The repos the skill can build in. **Required** — the skill can't run with an empty list. |
 
@@ -86,6 +92,24 @@ wholesale, so your `repos` list replaces the empty default).
 | `domain_suffix` | `"localhost"` | URL suffix. `*.localhost` resolves to `127.0.0.1` in Chrome with no DNS/hosts setup. |
 | `admin_host` | `"admin.localhost"` | Hostname the admin dashboard is proxied at. |
 | `admin_port` | `7878` | Port the admin dashboard listens on (also its `:127.0.0.1` fallback). |
+
+## `pr_feedback`
+
+Comments left on the PR are picked up as work items at the start of every iteration and answered after
+the push — see [PR review feedback](workflow.md#pr-review-feedback) for what the agent does with each
+one. Nothing needs configuring: the defaults below are what ships.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `enabled` | `true` | Pick up PR comments at all. `false` ⇒ the step is skipped silently. |
+| `reply` | `"always"` | `always` — answer every item; `on_fix` — reply only where code changed; `never` — act on comments but post nothing back. |
+| `resolve` | `"never"` | `never` — the reviewer resolves threads (the open list stays your reading queue); `on_fix` — resolve the ones actually fixed; `always` — resolve everything answered. |
+| `include_outdated` | `true` | Keep threads GitHub marks outdated. Usually the ones just worked on — a comment goes outdated the moment a fix touches that file. |
+| `include_bots` | `false` | Also treat comments from `*[bot]` accounts (CodeRabbit, Dependabot…) as work items. |
+| `marker` | `"<!-- feature:reply -->"` | Invisible tag the agent appends to its own replies — the only way to tell them apart, since `gh` posts under your account. Change it and previously answered threads resurface once. |
+
+The agent's own PR comments count as feedback when they lack the marker — so a `/code-review` write-up
+posted to the PR gets picked up and addressed on the next iteration, exactly like a human comment.
 
 ## `instructions[]`
 

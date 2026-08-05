@@ -1,13 +1,14 @@
 ---
 name: iteration
-description: Land a code change as a reviewed pull request — simplify the diff, commit, push, open or update the PR, then hand back considerations (risks, edge cases, what to test) and test links. Use proactively when the user wants to ship / commit / open a PR for the current change, or to "iterate" on work that should land via a PR. Runs standalone on the current branch, and is the engine the `feature` skill invokes inside its worktrees. If Feature Mode is already active, `feature` drives this — don't self-invoke.
+description: Land a code change as a reviewed pull request — pick up the reviewer's unaddressed PR comments, simplify the diff, commit, push, open or update the PR, answer every comment, then hand back considerations (risks, edge cases, what to test) and test links. Use proactively when the user wants to ship / commit / open a PR for the current change, to "iterate" on work that should land via a PR, or to address review comments left on the PR. Runs standalone on the current branch, and is the engine the `feature` skill invokes inside its worktrees. If Feature Mode is already active, `feature` drives this — don't self-invoke.
 ---
 
 # Iteration — land a change as a reviewed PR
 
 The disciplined per-change loop, and the **single source of truth** for it:
 
-> implement → **simplify** → commit → push → **PR** → **considerations** → test links
+> **pick up PR feedback** → implement → **simplify** → commit → push → **PR** → **answer the threads** →
+> **considerations** → test links
 
 The chat summary is produced **last**, after the change is already pushed and in the PR. Never lead
 with the summary.
@@ -64,6 +65,38 @@ obey it while implementing, simplifying, and committing. Unlike `considerations`
 **not** a checklist — never report them per-item and never add an `instructions:` line to the summary.
 If a rule and the user's explicit request for this iteration genuinely conflict, follow the user and
 note the deviation in one line under **Considerations**.
+
+### 0.5. Pick up the PR's review feedback — it belongs to this iteration
+Unaddressed comments on the PR are work items, exactly like the user's prompt. Collect them **before**
+implementing, so one iteration covers both (feature context: pass the repo's `pr` from `.feature.json`;
+standalone: omit `--pr` and the branch's own PR is used):
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/skills/feature/scripts/pr_feedback.py" list --cwd "$WT" [--pr <url>]
+```
+
+No PR yet, nothing unaddressed, or `pr_feedback.enabled: false` ⇒ one line of output and **skip
+silently**. A `gh`/network failure (exit 2) is one line in the summary, never a blocker.
+
+A thread is unaddressed when it is unresolved **and its last comment isn't yours**. Two traps the
+script already handles — don't reintroduce them by hand: `gh` posts as the human's own account, so the
+**author tells you nothing** (the marker in your own replies is the discriminator), and `isOutdated`
+does **not** mean handled — a comment goes outdated the moment you push a fix touching that file. (On a
+PR whose earlier replies predate the marker you may see a thread you already answered; the digest
+prints the whole thread, so just don't answer it twice.)
+
+Then act per item — do what's clear, ask only what genuinely isn't:
+
+| Item | What you do |
+|---|---|
+| a concrete fix ("extract this into a helper") | implement it in this iteration |
+| a question ("why like this?") | answer it in the thread; no code change |
+| you disagree, or you see a better option | say so **with the argument** — never silently comply |
+| out of scope for this task | don't widen the scope silently: answer where it belongs instead |
+| genuinely ambiguous | ask it as a numbered question before implementing |
+
+The user's chat prompt and the PR comments are **one** work list — deliver both. Never make the user
+repeat a comment in chat because you didn't look.
 
 ### 1. Implement
 Make the requested change(s) in `WT` only — never the main checkout or a base branch. **Read every
@@ -130,6 +163,21 @@ default base standalone:
 
 Later iterations need nothing — the push already updated the open PR.
 
+### 4b. Answer on the PR — one reply per item you picked up
+Only **after** the push, so the reply can cite the commit that settles it. Reply in the user's language
+(config `output_language`), and be honest: agreement is a verdict, not a courtesy.
+
+```bash
+SC="${CLAUDE_PLUGIN_ROOT}/skills/feature/scripts/pr_feedback.py"
+python3 "$SC" reply --thread <thread-id> --body "<verdict + what you did + <sha>>"
+python3 "$SC" reply --issue --cwd "$WT" --body "<answer>"   # a general PR comment / review body
+```
+
+The script appends the agent marker — that's what makes the thread count as answered next iteration —
+so never hand-roll a reply with `gh api` / `gh pr comment`. Resolving follows `pr_feedback.resolve`
+(default `never`: you answer, the reviewer resolves); under `on_fix` / `always` resolve with
+`python3 "$SC" resolve --thread <id>`. Picked nothing up in step 0.5 ⇒ skip.
+
 ### 5. Persist dashboard artifacts — **feature context only**
 Skip entirely when standalone. Overwrite `<worktrees>/<task>/summary.md` with the task's *current*
 cumulative state (what's done / considerations / what to test / links) in the user's language, using
@@ -144,6 +192,10 @@ _updated <YYYY-MM-DD HH:MM> · iteration <n> · <repos involved>_
 - <per-repo bullets of everything so far>
 - simplify: ✓            # or: skipped (minor)
 - considerations: mobile ✓ · rtl n/a · cross-browser ⚠   # omit only if the config list is empty
+- feedback: 5 · fixed 3 · answered 1 · deferred 1        # omit when nothing was picked up
+
+## Review feedback        # whole section omitted when nothing was picked up
+- <path:line> «<short quote>» → <agreed / disagreed: why / better option: … / justified: …> · <what you did> (<sha>)
 
 ## Considerations / risks
 - <cleaner approach, uncovered scenarios, edge cases, what's easy to forget>
@@ -177,12 +229,19 @@ Respond in the user's language. Blocks in this order, **ending with the test lin
 last thing the user can click:
 
 1. **What's done** — concise per-repo summary of this iteration. End with the simplify status line
-   (`simplify: ✓` / `simplify: skipped (minor)`) and, when the config's `considerations` list is
-   non-empty, the considerations line (`considerations: mobile ✓ · rtl n/a · …`).
-2. **Considerations** — tied to this change: a cleaner/more correct approach, scenarios still
+   (`simplify: ✓` / `simplify: skipped (minor)`), the considerations line when the config's
+   `considerations` list is non-empty (`considerations: mobile ✓ · rtl n/a · …`), and — when you picked
+   feedback up in step 0.5 — the feedback line (`feedback: 5 · fixed 3 · answered 1 · deferred 1`).
+2. **Review feedback** — omitted entirely when step 0.5 found nothing. One bullet per comment, each
+   carrying three things: **where** (`path:line` + a short quote of the comment), **your honest
+   verdict**, and **what you actually did**. The verdict is the point of this block — one of: agreed ·
+   disagreed, with the argument · there's a better option, namely … · what's there is justified,
+   because … Agreeing with everything is a smell, not politeness: if the reviewer is wrong, say why
+   here and in the thread. This block is peer to the rest of the summary, not an appendix.
+3. **Considerations** — tied to this change: a cleaner/more correct approach, scenarios still
    uncovered, edge cases, and what's easy to forget (errors, empty/limit states, mobile, i18n,
    migrations, auth).
-3. **🔗 Test / verify** — the LAST block.
+4. **🔗 Test / verify** — the LAST block.
    - *feature context:* clickable deep links that open exactly the affected page(s)/endpoint(s):
      `http://<task>.<suffix>/<affected-route>` (+ `http://localhost:<port>/…` fallback), API URLs for
      backend changes, and the PR link(s). Bare `http://…` per line with a short label. (If a server
@@ -195,6 +254,12 @@ The next user prompt starts a new iteration → back to step 1.
 ## Red flags — STOP, you're about to break the contract
 - Implementing without loading the standing instructions (step 0) → no. They're constraints on the
   code you're about to write, so they're worthless read afterwards.
+- Implementing while unaddressed PR comments sit on the PR → no. They're the same work list (step 0.5).
+- Deciding a comment is handled because it's `isOutdated`, or because "the last comment is the author's"
+  → no. Outdated means the file moved on; the author is the same account you post from.
+- Answering a thread before the push → no. The reply has to cite the commit that settles it (step 4b).
+- Writing "agreed" while leaving the code unchanged (or quietly fixing what you told the reviewer was
+  fine) → no. The verdict and what you did must match, in the thread and in the summary.
 - Reporting standing instructions as a per-item checklist → no. That's `considerations`; instructions
   are silent constraints.
 - "Too small to commit" → no. Every iteration commits (minor edits included).

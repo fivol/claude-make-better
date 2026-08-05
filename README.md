@@ -261,13 +261,20 @@ It's config-driven, so it works for any single- or multi-repo workspace.
 ## How it works
 
 **Analyze** (preflight the toolchain, confirm scope) → **Init** (worktree, deps, port, detached dev
-server, proxy) → **Iterate** (the `iteration` skill: implement → `/simplify` → considerations → commit
-→ push → PR → deep test links, every prompt) → **Finish** (sync base, green CI, merge, clean up).
+server, proxy) → **Iterate** (the `iteration` skill: pick up PR comments → implement → `/simplify` →
+considerations → commit → push → PR → answer every comment → deep test links, every prompt) →
+**Finish** (sync base, green CI, merge, clean up).
+
+Comments you leave on the PR are part of that loop: the agent picks up the unaddressed ones next
+iteration, does or argues with each, replies in the thread citing the fixing commit, and reports an
+honest verdict per comment in the summary — see
+**[PR review feedback](docs/feature/workflow.md#pr-review-feedback)**.
 
 ## Docs
 
 - **[Workflow & the `iteration` skill](docs/feature/workflow.md)** — the phases, the per-iteration
-  contract, the reusable **standalone** `iteration` skill, and the considerations checklist.
+  contract, the reusable **standalone** `iteration` skill, PR review feedback, and the considerations
+  checklist.
 - **[Dashboard, URLs & commands](docs/feature/dashboard.md)** — the admin dashboard (`/feature-admin`),
   pretty `*.localhost` URLs, and the `/feature-doctor` preflight.
 - **[Configuration](docs/feature/configuration.md)** — full config schema: per-repo fields,

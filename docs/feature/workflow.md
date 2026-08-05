@@ -41,6 +41,9 @@ Every iteration, in order, with the chat summary **last**:
    `.claude/feature/INSTRUCTIONS.md` (injected whenever the file exists), so the project's house rules
    constrain the code before it's written. Nothing configured ⇒ skipped silently. See
    [configuration.md](configuration.md#instructions).
+0.5. **Pick up the PR's review feedback** — unaddressed comments on the PR become work items for this
+   same iteration, next to your chat prompt. No PR or nothing new ⇒ skipped silently. See
+   [PR review feedback](#pr-review-feedback) below.
 1. **Implement** the change in the worktree (or the current branch, standalone).
 2. **Simplify** — a real `/simplify` invocation on the changed files (quality only, must not change
    behavior). Mandatory after any significant change; may skip a genuinely minor one — and it declares
@@ -51,13 +54,42 @@ Every iteration, in order, with the chat summary **last**:
    [configuration.md](configuration.md#considerations) for how to declare them.
 4. **Commit + push** — explicit git, per involved repo.
 5. **Ensure the PR** exists — created on the first iteration against the repo's base branch; later
-   pushes update it automatically.
-6. **Summary + considerations + test links** — the summary comes last and ends with clickable deep
-   links that open exactly the affected page(s)/endpoint(s).
+   pushes update it automatically. Then **answer** every comment picked up in step 0.5, one reply per
+   thread, each citing the commit that settles it.
+6. **Summary + review feedback + considerations + test links** — the summary comes last and ends with
+   clickable deep links that open exactly the affected page(s)/endpoint(s).
 
 Inside a feature workspace it also persists `summary.md` + the session id (which power the
 [dashboard](dashboard.md)) and hands out pretty `http://<task>.localhost/…` URLs. On a bare branch
 (standalone) it targets the repo's default base and gives how-to-verify steps instead of app URLs.
+
+## PR review feedback
+
+Comments you leave on the PR are treated as **work items, not notifications** — the agent picks them up
+at the start of the next iteration and delivers them together with whatever you asked for in chat. You
+never have to paste a comment into the chat to get it done.
+
+Per comment the agent decides: implement it · answer it (a question needs no code) · push back with an
+argument if it disagrees or sees a better option · say where it belongs if it's out of scope for this
+task · ask, as a numbered question, if it's genuinely ambiguous. After the push it replies in every
+thread, citing the commit that settles it, and the chat summary gains a **Review feedback** block —
+one bullet per comment with an honest verdict (agreed / disagreed and why / a better option / what's
+there is justified) and what it actually did. Silent compliance is explicitly ruled out by the
+contract: if you're wrong, the agent has to say so.
+
+Two details worth knowing, because they shape the behaviour:
+
+- **`gh` posts as you.** The agent's replies carry your GitHub account, so "who wrote the last comment"
+  can't distinguish you from the agent. Instead the agent's replies carry an invisible marker (an HTML
+  comment), and a thread counts as unaddressed while its last comment lacks that marker. Consequence:
+  on a PR whose replies predate this feature, previously answered threads surface once — the agent sees
+  the full thread and simply won't answer twice.
+- **Outdated ≠ handled.** A comment goes outdated the moment a fix touches that file, so outdated
+  threads are usually the ones just worked on. They're kept, with their diff hunk for context.
+
+By default the agent answers but never resolves threads — resolving stays yours, so the list of open
+threads remains your own reading queue. Switch that with `pr_feedback.resolve`; the whole step is
+configured under [`pr_feedback`](configuration.md#pr_feedback) and can be turned off there.
 
 ## Self-improving considerations and instructions
 
