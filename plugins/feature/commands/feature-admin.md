@@ -1,6 +1,6 @@
 ---
 description: Open the Feature admin dashboard — one live view of all feature workspaces
-argument-hint: [--port N] [--root DIR]
+argument-hint: "[--port N] [--root DIR]"
 ---
 
 Launch the **Feature admin dashboard**: a single live view of every feature workspace

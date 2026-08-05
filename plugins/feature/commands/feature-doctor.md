@@ -1,6 +1,6 @@
 ---
 description: Preflight-check the Feature toolchain (git, gh, config, repos, Caddy) and fix/instruct
-argument-hint: [--root DIR] [--mode full|lite]
+argument-hint: "[--root DIR] [--mode full|lite]"
 ---
 
 Run the Feature preflight doctor and act on it. It's read-only — it verifies everything the
