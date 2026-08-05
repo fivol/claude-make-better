@@ -37,27 +37,27 @@ Phase 2 to it. Because it's a standalone skill, you can also use it **outside Fe
 
 Every iteration, in order, with the chat summary **last**:
 
-0. **Load the standing instructions** — the config's `instructions` / `repos[].instructions` plus
-   `.claude/feature/INSTRUCTIONS.md` (injected whenever the file exists), so the project's house rules
-   constrain the code before it's written. Nothing configured ⇒ skipped silently. See
-   [configuration.md](configuration.md#instructions).
-0.5. **Pick up the PR's review feedback** — unaddressed comments on the PR become work items for this
-   same iteration, next to your chat prompt. No PR or nothing new ⇒ skipped silently. See
-   [PR review feedback](#pr-review-feedback) below.
-1. **Implement** the change in the worktree (or the current branch, standalone).
-2. **Simplify** — a real `/simplify` invocation on the changed files (quality only, must not change
-   behavior). Mandatory after any significant change; may skip a genuinely minor one — and it declares
-   which (`simplify: ✓` / `simplify: skipped (minor)`).
-3. **Considerations** — validate each applicable cross-cutting dimension from the config's
-   `considerations` list (mobile, RTL, cross-browser…) and report an explicit
-   `considerations: mobile ✓ · rtl n/a · …` line. Empty list ⇒ skipped. See
-   [configuration.md](configuration.md#considerations) for how to declare them.
-4. **Commit + push** — explicit git, per involved repo.
-5. **Ensure the PR** exists — created on the first iteration against the repo's base branch; later
-   pushes update it automatically. Then **answer** every comment picked up in step 0.5, one reply per
-   thread, each citing the commit that settles it.
-6. **Summary + review feedback + considerations + test links** — the summary comes last and ends with
-   clickable deep links that open exactly the affected page(s)/endpoint(s).
+- **0 · Load the standing instructions** — the config's `instructions` / `repos[].instructions` plus
+  `.claude/feature/INSTRUCTIONS.md` (injected whenever the file exists), so the project's house rules
+  constrain the code before it's written. Nothing configured ⇒ skipped silently. See
+  [configuration.md](configuration.md#instructions).
+- **0.5 · Pick up the PR's review feedback** — unaddressed comments on the PR become work items for
+  this same iteration, next to your chat prompt. No PR or nothing new ⇒ skipped silently. See
+  [PR review feedback](#pr-review-feedback) below.
+- **1 · Implement** the change in the worktree (or the current branch, standalone).
+- **2 · Simplify** — a real `/simplify` invocation on the changed files (quality only, must not change
+  behavior). Mandatory after any significant change; may skip a genuinely minor one — and it declares
+  which (`simplify: ✓` / `simplify: skipped (minor)`).
+- **3 · Considerations** — validate each applicable cross-cutting dimension from the config's
+  `considerations` list (mobile, RTL, cross-browser…) and report an explicit
+  `considerations: mobile ✓ · rtl n/a · …` line. Empty list ⇒ skipped. See
+  [configuration.md](configuration.md#considerations) for how to declare them.
+- **4 · Commit + push** — explicit git, per involved repo.
+- **5 · Ensure the PR** exists — created on the first iteration against the repo's base branch; later
+  pushes update it automatically. Then **answer** every comment picked up in step 0.5, one reply per
+  thread, each citing the commit that settles it.
+- **6 · Summary + review feedback + considerations + test links** — the summary comes last and ends
+  with clickable deep links that open exactly the affected page(s)/endpoint(s).
 
 Inside a feature workspace it also persists `summary.md` + the session id (which power the
 [dashboard](dashboard.md)) and hands out pretty `http://<task>.localhost/…` URLs. On a bare branch
