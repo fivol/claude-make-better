@@ -24,15 +24,17 @@ with an OPEN or not-yet-created PR are never touched. If reap evicted *this* tas
 
 ## 1. Run the iteration contract
 
-Invoke the **`iteration` skill** — it owns implement → simplify → commit → push → PR → considerations
-→ test links. It auto-detects this feature workspace (a `<worktrees>/<task>/.feature.json` beside the
-worktree + the config), and therefore:
+Invoke the **`iteration` skill** — it owns implement → simplify → review → commit → push → PR →
+considerations → test links. It auto-detects this feature workspace (a
+`<worktrees>/<task>/.feature.json` beside the worktree + the config), and therefore:
 
 - uses each involved repo's configured `base_branch` and spans **all** repos in the task;
 - loads the workspace's standing `instructions` (config arrays + `.claude/feature/INSTRUCTIONS.md`)
   before writing any code — its step 0;
 - picks up the PR's unaddressed review comments (its step 0.5) and answers each one after the push
   (step 4b), so review feedback lands in the same iteration as the user's prompt;
+- runs the impartial review gate over every repo it touched, once per iteration, as the last thing
+  before the commit (its step 2c) — see the `review` skill;
 - persists `<worktrees>/<task>/summary.md` + stamps the session id into `.feature.json` (this is what
   powers the admin dashboard);
 - emits pretty `http://<task>.<suffix>/…` deep links (with `localhost:<port>` fallback) as the closing

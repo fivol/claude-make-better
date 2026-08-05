@@ -262,13 +262,20 @@ It's config-driven, so it works for any single- or multi-repo workspace.
 
 **Analyze** (preflight the toolchain, confirm scope) → **Init** (worktree, deps, port, detached dev
 server, proxy) → **Iterate** (the `iteration` skill: pick up PR comments → implement → `/simplify` →
-considerations → commit → push → PR → answer every comment → deep test links, every prompt) →
-**Finish** (sync base, green CI, merge, clean up).
+**review** → considerations → commit → push → PR → answer every comment → deep test links, every
+prompt) → **Finish** (sync base, **final review of the integrated branch**, green CI, merge, clean up).
 
 Comments you leave on the PR are part of that loop: the agent picks up the unaddressed ones next
 iteration, does or argues with each, replies in the thread citing the fixing commit, and reports an
 honest verdict per comment in the summary — see
 **[PR review feedback](docs/feature/workflow.md#pr-review-feedback)**.
+
+Before anything is committed it goes through the **review gate** — a subagent that never saw the
+conversation, hunts correctness bugs before cleanups, verifies each candidate before believing it,
+and fixes what survives. You get a cleaned diff plus a one-line tally, not a list of homework; the
+only thing that reaches the chat is what the reviewer refused to decide alone. It runs again on the
+whole branch before the merge, where it is the only pass that ever sees the conflict resolutions —
+see **[the review gate](docs/feature/workflow.md#the-review-gate)**.
 
 ## Docs
 

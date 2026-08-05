@@ -40,6 +40,12 @@ wholesale, so your `repos` list replaces the empty default).
     "reply": "always",
     "resolve": "never"
   },
+  "code_review": {
+    "enabled": true,
+    "level": "max",
+    "fix": true,
+    "final_pass": true
+  },
   "proxy": {
     "enabled": true,
     "domain_suffix": "localhost",
@@ -81,6 +87,7 @@ wholesale, so your `repos` list replaces the empty default).
 | `instructions` | `[]` | Standing rules every iteration must obey — **strictly an array of strings** (see below). |
 | `considerations` | `[]` | Cross-cutting dimensions the agent validates every iteration (see below). Empty ⇒ feature off. |
 | `pr_feedback` | see below | How the reviewer's PR comments are picked up and answered each iteration. On by default. |
+| `code_review` | see below | The impartial review gate run before every commit and before the merge. On by default, at full depth. |
 | `proxy` | see below | Pretty-URL / admin-dashboard settings. |
 | `repos` | `[]` | The repos the skill can build in. **Required** — the skill can't run with an empty list. |
 
@@ -108,8 +115,28 @@ one. Nothing needs configuring: the defaults below are what ships.
 | `include_bots` | `false` | Also treat comments from `*[bot]` accounts (CodeRabbit, Dependabot…) as work items. |
 | `marker` | `"<!-- feature:reply -->"` | Invisible tag the agent appends to its own replies — the only way to tell them apart, since `gh` posts under your account. Change it and previously answered threads resurface once. |
 
-The agent's own PR comments count as feedback when they lack the marker — so a `/code-review` write-up
-posted to the PR gets picked up and addressed on the next iteration, exactly like a human comment.
+The agent's own PR comments count as feedback when they lack the marker — so any review write-up
+posted to the PR by something else gets picked up and addressed on the next iteration, exactly like a
+human comment.
+
+A review body or a general PR comment has no thread to reply into, so the agent's answer names what
+it answers (`reply --issue --to <url>`) and the item counts as addressed only once some reply
+references its url. Forgetting `--to` makes an item come back; nothing ever disappears because a
+later comment happened to be newer.
+
+## `code_review`
+
+The review gate: an impartial pass that finds the change's own bugs and fixes them, run by the
+`iteration` skill before every commit and once more on the whole branch before the merge — see
+[the review gate](workflow.md#the-review-gate). On by default, at full depth.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `enabled` | `true` | Run the gate at all. `false` ⇒ both passes are skipped silently. |
+| `level` | `"max"` | Angle budget: `max` — 13 angles, sweep pass, recall-biased; `high` — 10, sweep; `medium` — 8, no sweep. The diff's size collapses angles below this ceiling on its own, so a small change does not cost a large review. |
+| `fix` | `true` | Apply what the review finds. `false` ⇒ it only reports, and you get a findings list instead of a cleaned diff. |
+| `final_pass` | `true` | Run the whole-branch pass at finish, after the base is merged into the task branch — the only pass that sees the conflict resolutions and the interaction between iterations. |
+| `final_comment` | `true` | Post the final pass's summary to the PR as one comment (marked, so it never comes back as feedback). |
 
 ## `instructions[]`
 

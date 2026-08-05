@@ -170,8 +170,9 @@ digraph phases {
 ## The iteration contract — delegated to the `iteration` skill
 
 Phase 2 does **not** re-implement the per-change contract — it is owned by the **`iteration` skill**
-(the single source of truth): **pick up PR feedback** → implement → **simplify** → commit → push →
-**PR** → **answer the threads** → **considerations** → test links, with the chat summary **last**.
+(the single source of truth): **pick up PR feedback** → implement → **simplify** → **review** →
+commit → push → **PR** → **answer the threads** → **considerations** → test links, with the chat
+summary **last**.
 Each Phase 2 turn is just:
 
 1. **Reap** stale workspaces (`iterate.md` §0) — feature-only lifecycle housekeeping, every turn.

@@ -204,6 +204,18 @@ def pr_feedback(cfg):
     }
 
 
+def code_review(cfg):
+    """The `code_review` block: the review gate the `iteration` skill runs."""
+    p = cfg.get("code_review") or {}
+    return {
+        "enabled": p.get("enabled", True),
+        "level": p.get("level", "max"),
+        "fix": p.get("fix", True),
+        "final_pass": p.get("final_pass", True),
+        "final_comment": p.get("final_comment", True),
+    }
+
+
 def primary_frontend(cfg, present):
     """The repo that owns the bare http://<task>.<suffix> alias.
 
