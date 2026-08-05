@@ -13,6 +13,13 @@
     "include_bots": false,
     "marker": "<!-- feature:reply -->"
   },
+  "code_review": {
+    "enabled": true,
+    "level": "max",
+    "fix": true,
+    "final_pass": true,
+    "final_comment": true
+  },
   "proxy": {
     "enabled": true,
     "domain_suffix": "localhost",

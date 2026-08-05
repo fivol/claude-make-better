@@ -48,6 +48,9 @@ Every iteration, in order, with the chat summary **last**:
 - **2 · Simplify** — a real `/simplify` invocation on the changed files (quality only, must not change
   behavior). Mandatory after any significant change; may skip a genuinely minor one — and it declares
   which (`simplify: ✓` / `simplify: skipped (minor)`).
+- **2.5 · Review** — an impartial pass that finds the change's own bugs and fixes them, in a
+  subagent that never saw the conversation. The last thing before the commit. Off with
+  `code_review.enabled: false`. See [the review gate](#the-review-gate) below.
 - **3 · Considerations** — validate each applicable cross-cutting dimension from the config's
   `considerations` list (mobile, RTL, cross-browser…) and report an explicit
   `considerations: mobile ✓ · rtl n/a · …` line. Empty list ⇒ skipped. See
@@ -90,6 +93,39 @@ Two details worth knowing, because they shape the behaviour:
 By default the agent answers but never resolves threads — resolving stays yours, so the list of open
 threads remains your own reading queue. Switch that with `pr_feedback.resolve`; the whole step is
 configured under [`pr_feedback`](configuration.md#pr_feedback) and can be turned off there.
+
+## The review gate
+
+`/simplify` cleans code whose intent the agent knows. The review gate is deliberately the opposite:
+a **fork** — a subagent that never saw the conversation, cannot excuse anything, and judges the diff
+on what it actually says. It hunts correctness bugs first, then reuse, simplification, efficiency,
+altitude and convention violations, **verifies every candidate before believing it**, and fixes what
+survives. You get a cleaned diff, not a list of homework.
+
+It runs twice, with different scopes, and both are load-bearing:
+
+- **Before every commit**, over everything not yet in the PR — uncommitted work, commits made this
+  iteration but not pushed, and new untracked files, across every repo the iteration touched. It
+  covers the whole iteration's work: code written for your chat prompt and code written to satisfy a
+  PR comment are the same diff and get the same gate.
+- **Before the merge**, over the whole branch, right after the base has been merged into the task
+  branch. This pass is the only one that sees the **conflict resolutions** — hand-written code no one
+  has reviewed — and the only one that can catch iteration 5 breaking an assumption iteration 1
+  relied on. Its findings are fixed in the PR, before CI, and (by default) summarised in one PR
+  comment.
+
+The scope is why the per-iteration pass stays cheap: each run only ever looks at what is new, so
+running it at full depth every time costs a review proportional to the change, not to the branch.
+
+Three things come back into the chat, and nothing else — the report itself stays in the fork:
+
+1. a status line, `review: ✓ max — fixed 4 (P0 1) · skipped 1`;
+2. **Needs you** — findings the reviewer refused to decide alone (two defensible fixes, or a fix that
+   would change behavior the task deliberately introduced), as numbered questions. Before the merge
+   these block it;
+3. nothing else. The fixes are in the diff, where you review them as code.
+
+Configure depth and both passes under [`code_review`](configuration.md#code_review).
 
 ## Self-improving considerations and instructions
 

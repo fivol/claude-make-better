@@ -43,6 +43,39 @@ On conflict git stops with a non-zero exit. Resolve the conflicted files **in `$
 worktree), then `git -C "$WT" add -A && git -C "$WT" commit --no-edit` and push. If you can't resolve
 confidently, **ask the user** before committing — never guess a conflict resolution.
 
+## 2b. Final review — the whole branch, now that the base is in it
+
+Skip when `code_review.final_pass` is `false`. This runs **here** and nowhere else, and the position
+is the whole point:
+
+- the task branch now contains the **integrated** code — your feature plus the latest base — so this
+  is the first and only moment anything can review what will actually land;
+- **conflict resolutions from step 2 are hand-written code that no one has reviewed.** They are
+  written under pressure, in the least familiar part of the diff, and they are a classic source of
+  silently dropped changes — a resolution that keeps "ours" and quietly discards a fix the base
+  branch added. Per-iteration reviews never saw them, because they didn't exist yet;
+- fixes still land **in the PR**, before CI runs on it (step 3). After step 6 the merge is done and
+  any fix needs a new PR — which is why this is not a post-merge step.
+
+It also closes the gap the per-iteration gate structurally cannot: iteration 5 breaking an assumption
+iteration 1 relied on. Each iteration reviewed only its own diff; this one reviews the sum.
+
+```
+/feature:review --scope branch --root "$ROOT" --repos "<all involved repos>" --comment
+```
+
+Drop `--comment` when `code_review.final_comment` is `false`; it posts one summary comment per PR
+(through `pr_feedback.py`, so it carries the agent marker and never comes back as feedback).
+
+Then:
+
+- **Anything fixed** → commit and push it on the task branch (`git -C "$WT" add -A && git -C "$WT"
+  commit -m "review: <what>" && git -C "$WT" push`), so CI in step 3 validates the fixed code.
+- **`Needs you` items** → these block the merge. Ask the user as numbered questions and wait. Do not
+  merge past a finding the reviewer found and couldn't decide alone.
+- **P0 that was fixed** → say so explicitly when you report (step 10); the user is about to merge and
+  deserves to know something real was caught at the gate.
+
 ## 3. Wait for the PR's CI to go green
 
 The whole reason we sync in the worktree is so CI validates the *integrated* code before it reaches the
@@ -121,9 +154,11 @@ rm -rf "$ROOT/<worktrees>/<task>"   # leftover .feature.json / empty repo dirs
 
 ## 10. Report
 
-Tell the user (in their language): which PR(s) are now **Merged** (with links), that the local base was
-updated & pushed, that worktrees/branches/ports/proxy were cleaned up, and any follow-up (deploy, QA,
-related tickets).
+Tell the user (in their language): that the **final review** ran on the integrated branch and what it
+caught (`final review: ✓ max — fixed 3 (P0 1) · skipped 1`, plus one line per P0 — and say it was
+posted to the PR when `--comment` was used); which PR(s) are now **Merged** (with links); that the
+local base was updated & pushed; that worktrees/branches/ports/proxy were cleaned up; and any
+follow-up (deploy, QA, related tickets).
 
 ## 11. Reflect — propose new `considerations` / `instructions` from this session
 

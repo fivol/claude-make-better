@@ -1,14 +1,14 @@
 ---
 name: iteration
-description: Land a code change as a reviewed pull request — pick up the reviewer's unaddressed PR comments, simplify the diff, commit, push, open or update the PR, answer every comment, then hand back considerations (risks, edge cases, what to test) and test links. Use proactively when the user wants to ship / commit / open a PR for the current change, to "iterate" on work that should land via a PR, or to address review comments left on the PR. Runs standalone on the current branch, and is the engine the `feature` skill invokes inside its worktrees. If Feature Mode is already active, `feature` drives this — don't self-invoke.
+description: Land a code change as a reviewed pull request — pick up the reviewer's unaddressed PR comments, simplify the diff, run the review gate that finds and fixes the change's own bugs, commit, push, open or update the PR, answer every comment, then hand back considerations (risks, edge cases, what to test) and test links. Use proactively when the user wants to ship / commit / open a PR for the current change, to "iterate" on work that should land via a PR, or to address review comments left on the PR. Runs standalone on the current branch, and is the engine the `feature` skill invokes inside its worktrees. If Feature Mode is already active, `feature` drives this — don't self-invoke.
 ---
 
 # Iteration — land a change as a reviewed PR
 
 The disciplined per-change loop, and the **single source of truth** for it:
 
-> **pick up PR feedback** → implement → **simplify** → commit → push → **PR** → **answer the threads** →
-> **considerations** → test links
+> **pick up PR feedback** → implement → **simplify** → **review** → commit → push → **PR** →
+> **answer the threads** → **considerations** → test links
 
 The chat summary is produced **last**, after the change is already pushed and in the PR. Never lead
 with the summary.
@@ -140,6 +140,47 @@ silently**. Each entry is a recurring blind spot — something features get spec
 follow-up (carry it into **Considerations**). Never omit the line when the list is non-empty; writing
 `✓` without actually checking is a contract violation.
 
+### 2c. Review — MANDATORY, and it is the last thing before the commit
+`/simplify` improves code you wrote and whose intent you know. This step is the opposite on purpose:
+an **impartial** pass over the same diff, by an agent that never saw this conversation and therefore
+cannot excuse anything. It hunts correctness bugs first, then reuse/simplification/efficiency/
+altitude/conventions, verifies each candidate before believing it, and **fixes what it finds**.
+
+Invoke the `review` skill (a **real** Skill invocation, not a mention), after simplify and after
+every code change of this iteration is on disk:
+
+```
+/feature:review --scope working --root "$ROOT" --repos "<the repos you touched>"
+```
+
+It reviews everything not yet in the PR — uncommitted work, commits made this iteration but not
+pushed, and new untracked files — across **all** the repos you touched, so run it **once** for the
+whole iteration, not once per repo. It never commits; its edits join this iteration's commit.
+`code_review.enabled: false` ⇒ skip silently. `/feature:review` not installed ⇒ say so in one line and
+carry on; never fake it.
+
+**This covers the whole iteration's work, not just the chat prompt.** Code you wrote for the user's
+request, code you wrote to satisfy a PR comment picked up in step 0.5, and anything you changed while
+answering a reviewer are all in the same diff and all get reviewed. Never exclude "it was only a
+review comment" from the gate — those changes are written under argument pressure and are exactly the
+ones that skip a step.
+
+**Significant ⇒ required. Minor ⇒ may skip** — the same split as step 2 (`/simplify`), and if you
+ran simplify you run review.
+
+The skill returns a compact report. **Do not paste it into the chat.** Take three things from it:
+
+1. the status line for the summary — `review: ✓ max — fixed 4 (P0 1) · skipped 1`;
+2. the **Needs you** items, if any — they are the one part the user must see, and they go into the
+   chat as numbered questions (step 6, block 3). A `Needs you` item silently dropped is the worst
+   failure mode of this step: it is a defect the reviewer found, could not decide alone, and nobody
+   ever saw;
+3. whether any fix touched a surface a `considerations` entry covers — if so, re-verify that entry
+   before writing its `✓`.
+
+Declare the outcome in the summary as `review: ✓ <level> — fixed <n> · skipped <m>`, or
+`review: skipped (minor)`. Never omit it silently — a silent skip is a contract violation.
+
 ### 3. Commit + push — explicit git, per repo
 Stage only the files you changed (leave unrelated files untouched). Spell out git explicitly — do not
 delegate to a commit utility:
@@ -170,13 +211,22 @@ Only **after** the push, so the reply can cite the commit that settles it. Reply
 ```bash
 SC="${CLAUDE_PLUGIN_ROOT}/skills/feature/scripts/pr_feedback.py"
 python3 "$SC" reply --thread <thread-id> --body "<verdict + what you did + <sha>>"
-python3 "$SC" reply --issue --cwd "$WT" --body "<answer>"   # a general PR comment / review body
+python3 "$SC" reply --issue --cwd "$WT" --to <item-url> --body "<answer>"   # review body / general comment
 ```
 
-The script appends the agent marker — that's what makes the thread count as answered next iteration —
-so never hand-roll a reply with `gh api` / `gh pr comment`. Resolving follows `pr_feedback.resolve`
-(default `never`: you answer, the reviewer resolves); under `on_fix` / `always` resolve with
-`python3 "$SC" resolve --thread <id>`. Picked nothing up in step 0.5 ⇒ skip.
+The script appends the agent marker — that's what makes the item count as answered next iteration —
+so never hand-roll a reply with `gh api` / `gh pr comment`. A **thread** reply is self-addressing. A
+**general** reply is not: it lands in the PR conversation with nothing tying it to what it answers,
+so pass `--to <url of the review body or comment>` (the `url` field of the item in step 0.5's
+output). Answering two review bodies ⇒ two `--to` replies, or one reply repeated per url — one
+unaddressed `--to` means that item comes back next iteration, which is the safe direction to fail.
+
+Resolving follows `pr_feedback.resolve` (default `never`: you answer, the reviewer resolves); under
+`on_fix` / `always` resolve with `python3 "$SC" resolve --thread <id>`. Picked nothing up in step
+0.5 ⇒ skip.
+
+If step 0.5 printed a `!! GitHub capped …` line, the list was truncated by the API — say so in the
+summary and open the PR to check the remainder by hand rather than reporting all feedback addressed.
 
 ### 5. Persist dashboard artifacts — **feature context only**
 Skip entirely when standalone. Overwrite `<worktrees>/<task>/summary.md` with the task's *current*
@@ -191,6 +241,7 @@ _updated <YYYY-MM-DD HH:MM> · iteration <n> · <repos involved>_
 ## What's done
 - <per-repo bullets of everything so far>
 - simplify: ✓            # or: skipped (minor)
+- review: ✓ max — fixed 4 (P0 1) · skipped 1             # or: skipped (minor)
 - considerations: mobile ✓ · rtl n/a · cross-browser ⚠   # omit only if the config list is empty
 - feedback: 5 · fixed 3 · answered 1 · deferred 1        # omit when nothing was picked up
 
@@ -229,7 +280,8 @@ Respond in the user's language. Blocks in this order, **ending with the test lin
 last thing the user can click:
 
 1. **What's done** — concise per-repo summary of this iteration. End with the simplify status line
-   (`simplify: ✓` / `simplify: skipped (minor)`), the considerations line when the config's
+   (`simplify: ✓` / `simplify: skipped (minor)`), the review status line
+   (`review: ✓ max — fixed 4 (P0 1) · skipped 1`), the considerations line when the config's
    `considerations` list is non-empty (`considerations: mobile ✓ · rtl n/a · …`), and — when you picked
    feedback up in step 0.5 — the feedback line (`feedback: 5 · fixed 3 · answered 1 · deferred 1`).
 2. **Review feedback** — omitted entirely when step 0.5 found nothing. One bullet per comment, each
@@ -238,10 +290,14 @@ last thing the user can click:
    disagreed, with the argument · there's a better option, namely … · what's there is justified,
    because … Agreeing with everything is a smell, not politeness: if the reviewer is wrong, say why
    here and in the thread. This block is peer to the rest of the summary, not an appendix.
-3. **Considerations** — tied to this change: a cleaner/more correct approach, scenarios still
+3. **Review — your call** — omitted entirely unless step 2c returned **Needs you** items. One
+   numbered question each: where it is, what the reviewer found, and the two or more defensible
+   options it wouldn't choose between. Nothing else from the review report belongs in chat — the
+   status line in block 1 already says how much was fixed, and the fixes themselves are in the diff.
+4. **Considerations** — tied to this change: a cleaner/more correct approach, scenarios still
    uncovered, edge cases, and what's easy to forget (errors, empty/limit states, mobile, i18n,
    migrations, auth).
-4. **🔗 Test / verify** — the LAST block.
+5. **🔗 Test / verify** — the LAST block.
    - *feature context:* clickable deep links that open exactly the affected page(s)/endpoint(s):
      `http://<task>.<suffix>/<affected-route>` (+ `http://localhost:<port>/…` fallback), API URLs for
      backend changes, and the PR link(s). Bare `http://…` per line with a short label. (If a server
@@ -264,6 +320,16 @@ The next user prompt starts a new iteration → back to step 1.
   are silent constraints.
 - "Too small to commit" → no. Every iteration commits (minor edits included).
 - Said you'd simplify but didn't invoke `/simplify` → no. It must be a real skill invocation.
+- Committing without the review gate (step 2c) → no. Impartial review before the commit is the whole
+  point; running it after the push reviews an empty diff, because the push already emptied the scope.
+- Excluding the PR-comment work from the review because "it was only a comment" → no. Same iteration,
+  same diff, same gate.
+- Dropping a **Needs you** item from the review report → no. It's a found defect nobody decided on;
+  it goes to the user as a numbered question (step 6, block 3).
+- Pasting the whole review report into chat → no. The status line plus the `Needs you` questions is
+  all that belongs there; the fixes are already in the diff.
+- Reviewing your own change inline instead of invoking the skill → no. The gate's value is that the
+  reviewer never saw this conversation and can't excuse anything.
 - Skipped the `considerations` line (non-empty config), or wrote `mobile ✓` without actually checking →
   no. Each applicable dimension must be really verified and reported (`✓`/`n/a`/`⚠`).
 - About to write the summary before pushing → no. Push first, summary last.
