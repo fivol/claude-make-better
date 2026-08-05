@@ -31,6 +31,8 @@ worktree + the config), and therefore:
 - uses each involved repo's configured `base_branch` and spans **all** repos in the task;
 - loads the workspace's standing `instructions` (config arrays + `.claude/feature/INSTRUCTIONS.md`)
   before writing any code — its step 0;
+- picks up the PR's unaddressed review comments (its step 0.5) and answers each one after the push
+  (step 4b), so review feedback lands in the same iteration as the user's prompt;
 - persists `<worktrees>/<task>/summary.md` + stamps the session id into `.feature.json` (this is what
   powers the admin dashboard);
 - emits pretty `http://<task>.<suffix>/…` deep links (with `localhost:<port>` fallback) as the closing

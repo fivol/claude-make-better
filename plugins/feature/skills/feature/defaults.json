@@ -5,6 +5,14 @@
   "output_language": "the user's language",
   "instructions": [],
   "considerations": [],
+  "pr_feedback": {
+    "enabled": true,
+    "reply": "always",
+    "resolve": "never",
+    "include_outdated": true,
+    "include_bots": false,
+    "marker": "<!-- feature:reply -->"
+  },
   "proxy": {
     "enabled": true,
     "domain_suffix": "localhost",

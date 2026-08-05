@@ -191,6 +191,19 @@ def proxy(cfg):
     }
 
 
+def pr_feedback(cfg):
+    """The `pr_feedback` block: how the PR's review comments are picked up/answered."""
+    p = cfg.get("pr_feedback") or {}
+    return {
+        "enabled": p.get("enabled", True),
+        "reply": p.get("reply", "always"),
+        "resolve": p.get("resolve", "never"),
+        "include_outdated": p.get("include_outdated", True),
+        "include_bots": p.get("include_bots", False),
+        "marker": p.get("marker", "<!-- feature:reply -->"),
+    }
+
+
 def primary_frontend(cfg, present):
     """The repo that owns the bare http://<task>.<suffix> alias.
 

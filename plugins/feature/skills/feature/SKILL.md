@@ -170,8 +170,9 @@ digraph phases {
 ## The iteration contract — delegated to the `iteration` skill
 
 Phase 2 does **not** re-implement the per-change contract — it is owned by the **`iteration` skill**
-(the single source of truth): implement → **simplify** → commit → push → **PR** → **considerations** →
-test links, with the chat summary **last**. Each Phase 2 turn is just:
+(the single source of truth): **pick up PR feedback** → implement → **simplify** → commit → push →
+**PR** → **answer the threads** → **considerations** → test links, with the chat summary **last**.
+Each Phase 2 turn is just:
 
 1. **Reap** stale workspaces (`iterate.md` §0) — feature-only lifecycle housekeeping, every turn.
 2. **Invoke the `iteration` skill.** It auto-detects this workspace (a `.feature.json` beside the
@@ -207,6 +208,7 @@ Everything is declared in `<workspace-root>/.claude/feature/config.json`:
 | `repos[].dev_start` | dev-server command, `{port}` placeholder, run relative to the worktree (full mode) |
 | `instructions[]` | standing rules every iteration must obey (array of strings); `repos[].instructions` scopes rules to one repo. Companion free-form file: `.claude/feature/INSTRUCTIONS.md` — see `configuration.md` |
 | `considerations[]` | cross-cutting dimensions the `iteration` skill validates every iteration (mobile, RTL/i18n, …); each has `name`, `check`, optional `when`/`repos` — see `configuration.md` |
+| `pr_feedback` | how the reviewer's PR comments are picked up and answered each iteration (`enabled`, `reply`, `resolve`, …) — on by default; see `configuration.md` |
 | `proxy.domain_suffix` | URL suffix for pretty URLs (default `localhost`) |
 | `proxy.admin_host` / `admin_port` | admin dashboard host/port |
 | `max_live_servers` | reaper cap on concurrent dev servers |
