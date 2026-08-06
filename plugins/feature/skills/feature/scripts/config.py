@@ -204,12 +204,27 @@ def pr_feedback(cfg):
     }
 
 
+LEVELS = ("medium", "high", "max")
+
+
 def code_review(cfg):
-    """The `code_review` block: the review gate the `iteration` skill runs."""
+    """The `code_review` block: the review gate the `iteration` skill runs.
+
+    `level` is the depth of the pre-merge pass (`--scope branch`) and doubles as
+    the ceiling for the whole gate. `working_level` is the depth of the
+    per-iteration pass (`--scope working`) — cheaper by default, because the
+    pre-merge pass re-reviews the same code at full depth once the branch is
+    complete. It is clamped to `level` so lowering the ceiling lowers both.
+    """
     p = cfg.get("code_review") or {}
+    level = p.get("level", "max")
+    working = p.get("working_level", "medium")
+    if level in LEVELS and working in LEVELS:
+        working = min(working, level, key=LEVELS.index)
     return {
         "enabled": p.get("enabled", True),
-        "level": p.get("level", "max"),
+        "level": level,
+        "working_level": working,
         "fix": p.get("fix", True),
         "final_pass": p.get("final_pass", True),
         "final_comment": p.get("final_comment", True),

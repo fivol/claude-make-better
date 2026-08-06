@@ -30,13 +30,21 @@ change, and what only the user can decide.
 | `--repos` | every repo with a diff | Comma-separated repo names, feature context only. |
 | `--root` | resolved from cwd | Workspace root (the dir holding `.claude/feature/config.json`). |
 | `--pr` | the branch's own PR | Only needed when the summary comment is posted, or when the repo has several PRs. |
-| `--level` | config `code_review.level` (`max`) | Angle budget — see Phase 1. |
+| `--level` | `--scope working` → config `code_review.working_level` (`medium`) · `--scope branch` → config `code_review.level` (`max`) | Angle budget — see Phase 1. |
 | `--no-fix` | config `code_review.fix` (`true` ⇒ fix) | Report only, change nothing. |
 | `--comment` / `--no-comment` | `--scope branch` → config `code_review.final_comment` (`true`) · `--scope working` → off | Also post one summary comment to the PR. |
 
 **Flags are overrides, never prerequisites.** Every default above comes from the config, so a caller
 that passes nothing — or that describes the scope in prose — still gets the configured behavior. A
 behavior that only happens when the caller remembers a flag is a behavior that doesn't happen.
+
+**The two passes are not the same depth, and that is deliberate.** The per-iteration pass
+(`--scope working`) runs at `working_level` — cheap, because the same code is reviewed again, in
+full, by the pre-merge pass once the branch is complete. The pre-merge pass (`--scope branch`) runs
+at `level` and is the one that must not be cut: it is the only pass that sees the whole change, the
+merged base and the conflict resolutions. `working_level` is clamped to `level`, so lowering the
+ceiling lowers both. Resolve the level **before** Phase 1 and say which one you used in the report
+header.
 
 Read the config once — it also carries the project's standing rules, which are review criteria.
 `ROOT` is the `--root` you were given; without one, drop the flag and let `config.py` resolve the
@@ -51,27 +59,34 @@ python3 "${CLAUDE_PLUGIN_ROOT}/skills/feature/scripts/config.py" --root "$ROOT" 
 
 ## The fan-out — read-only agents, on two model tiers
 
-Every agent this skill spawns in Phases 1–4 is **read-only**. Dispatch each one as:
+Every agent this skill spawns in Phases 1–4 is **read-only**, and every one carries its tier in the
+subagent type it is dispatched as:
 
 ```
-Agent(subagent_type: "feature:review-finder", model: "<tier>", prompt: "<the brief>")
+Agent(subagent_type: "feature:review-finder-deep", model: "<deep_agent_model>",  prompt: "<the brief>")
+Agent(subagent_type: "feature:review-finder",      model: "<light_agent_model>", prompt: "<the brief>")
 ```
 
-`feature:review-finder` ships with this plugin and has **no `Edit` and no `Write`** — a structural
-guarantee, not a request in a prompt. If that subagent type doesn't resolve, retry `review-finder`;
-if that fails too, fall back to `general-purpose`, put the read-only rule in the prompt **in full**,
-and say in the report that the finders ran unsandboxed.
+Both ship with this plugin and have **no `Edit` and no `Write`** — a structural guarantee, not a
+request in a prompt. Why it is structural: a finder that "helpfully" fixes what it found writes code
+no one reviewed into a diff the caller is about to commit — and it has already shipped regressions
+here. Finding is theirs; fixing is Phase 5's, and Phase 5 is yours.
 
-Why it is structural: a finder that "helpfully" fixes what it found writes code no one reviewed into
-a diff the caller is about to commit — and it has already shipped regressions here. Finding is theirs;
-fixing is Phase 5's, and Phase 5 is yours.
+**The tier is structural too.** `review-finder-deep` declares `opus` and `review-finder` declares
+`sonnet` in their own frontmatter, so a dispatch that forgets `model` still lands on the right tier.
+Pass `model` anyway — it is what makes the config's `deep_agent_model` / `light_agent_model` apply —
+but the type is what the run's cost actually rests on. Picking the type by tier is not optional: a
+run that sent every angle to one type was the single largest cost overrun this gate has had, because
+the retrieval angles quietly ran deep.
 
-**Model tiers — pass `model` on every dispatch, never let it default.**
+If a subagent type doesn't resolve, retry the bare `review-finder-deep` / `review-finder`; if that
+fails too, fall back to `general-purpose`, put the read-only rule **and** the right `model` in the
+prompt in full, and say in the report that the finders ran unsandboxed.
 
-| Tier | `model` | Runs |
+| Tier | Type · `model` | Runs |
 |---|---|---|
-| **deep** | config `code_review.deep_agent_model` (`opus`) | Angles A, B, C, D, E, Altitude · the cross-repo pass (Phase 4) · verification of correctness candidates and of every P0 suspect |
-| **light** | config `code_review.light_agent_model` (`sonnet`) | Angles Reuse, Simplification, Efficiency, Conventions, History, Prior review, Code comments · the sweep (Phase 3) · verification of cleanup candidates |
+| **deep** | `feature:review-finder-deep` · config `deep_agent_model` (`opus`) | Angles A, B, C, D+E, Altitude · the cross-repo pass (Phase 4) · verification of P0 suspects |
+| **light** | `feature:review-finder` · config `light_agent_model` (`sonnet`) | Angles Reuse, Simplification, Efficiency, Conventions, History, Prior review, Code comments · the sweep (Phase 3) · verification of correctness and cleanup candidates |
 
 The split is by **what the agent must actually do**, not by how much the finding matters. Deciding
 whether a condition inverts on an empty list is reasoning; quoting the rule out of a `CLAUDE.md`,
@@ -115,6 +130,50 @@ and say the scope was empty** — never invent a review of already-merged code.
 Test and fixture files are **in** scope, judged for wrong assertions, setup/teardown asymmetry and
 cases the change silently stopped covering — not for style.
 
+### Build the diff pack — once, for everyone
+
+You have just computed every repo's diff. **Write it down, and hand the finders paths instead of
+instructions to re-derive it.** Twelve agents each rebuilding the same diff with their own `git diff`
+and their own exploratory `ls` is the same work paid for twelve times, and it happens on the deep
+tier too.
+
+The pack must contain **everything the scope covers** — all of it, in one file per repo. That is the
+committed range *and* the uncommitted diff *and* every untracked file; a pack built from one range
+silently narrows the review to less than Phase 0 resolved.
+
+```bash
+PACK="${TMPDIR:-/tmp}/feature-review-$(basename "$ROOT")-$$"
+mkdir -p "$PACK"
+
+# RANGE: --scope working → '@{upstream}..HEAD'  (or "origin/$BASE...HEAD" when never pushed)
+#        --scope branch  → "origin/$BASE...HEAD"
+{
+  git -C "$WT" diff "$RANGE"                    # committed, in scope
+  git -C "$WT" diff HEAD                        # uncommitted — in scope in BOTH scopes
+  for f in $(git -C "$WT" ls-files --others --exclude-standard); do
+    printf '\n--- NEW FILE: %s ---\n' "$f"; cat "$WT/$f"   # untracked: an all-added hunk
+  done
+} > "$PACK/<repo>.diff"
+
+{ git -C "$WT" diff --name-status "$RANGE"
+  git -C "$WT" diff --name-status HEAD
+  git -C "$WT" ls-files --others --exclude-standard | sed 's/^/A\t/'
+} | sort -u -k2 > "$PACK/<repo>.files"
+git -C "$WT" log --oneline "origin/$BASE..HEAD" > "$PACK/<repo>.log"
+```
+
+Check `wc -l "$PACK/<repo>.diff"` against the changed-line count you computed for the angle budget —
+if the pack is materially smaller, a part of the scope didn't make it in, and every finder is about
+to review the wrong thing.
+
+Every brief in Phases 1–4 then opens with the pack: the repo's `.diff` path and its line count, the
+`.files` inventory, the `.log`, and the worktree path for reading the real files around a hunk. Say
+explicitly: **read the diff from that file; do not rebuild it with `git`.**
+
+The pack lives outside every repo, so it can't dirty a worktree and Phase 4.5 never sees it. Remove
+it when the run ends. If you cannot write to `$TMPDIR`, skip the pack and inline the diffs into the
+briefs as before — say so in the report, because the run will cost noticeably more.
+
 Last thing before you fan out — snapshot each repo's working state so Phase 4.5 can prove nothing
 wrote to it. Both files go inside that repo's git dir: per-worktree, and never listed by `git status`.
 Two snapshots, because one isn't enough — the status catches files created or newly modified, the
@@ -152,21 +211,28 @@ Count changed lines **across all repos in scope** (`git diff --shortstat` per re
 untracked files) and pick one row. That number is the angle count for the **run**. The number of
 repos never multiplies it.
 
-| Changed lines, all repos | Angles for the run |
-|---|---|
-| < 30 | A+B merged, C+D+E merged, Reuse+Simplification+Efficiency merged, Conventions → **4** |
-| 30–300 | A, B, C, D+E, Reuse, Simplification+Efficiency, Altitude+Conventions, History → **8** |
-| > 300 | every angle the level allows — **13** at `max` |
+The **deep** column is what the row actually costs — a deep agent is roughly five times a light one,
+so the rows cut deep agents first and leave the light angles alone.
 
-**One agent per angle, covering every repo in scope.** Hand it all the repos' diffs at once; it
+| Changed lines, all repos | Deep agents | Light agents | Total |
+|---|---|---|---|
+| < 30 | A+B, C+D+E → **2** | Reuse+Simplification+Efficiency, Conventions → **2** | **4** |
+| 30–300 | A+B, C, D+E, Altitude → **4** | Reuse, Simplification+Efficiency, Conventions, History → **4** | **8** |
+| > 300 | A, B, C, D+E, Altitude → **5** | Reuse, Simplification, Efficiency, Conventions, History, Prior review, Code comments → **7** | **12** |
+
+A merged angle is one agent running both briefs in one pass, reporting under both names — not one
+brief standing in for the other. **A merged angle never mixes tiers**: every merge above is within a
+tier, and the row's deep column is the whole deep budget.
+
+**One agent per angle, covering every repo in scope.** Hand it all the repos' pack paths at once; it
 returns candidates tagged by repo. The single exception: when **two or more repos each have > 300
-changed lines**, the three per-hunk angles (**A**, **B**, **C**) get one agent per repo — those are
-the angles that must read every line, and attention does not divide. Apply the split to the largest
+changed lines**, the per-hunk angles (**A**, **B**, **C**) get one agent per repo — those are the
+angles that must read every line, and attention does not divide. Apply the split to the largest
 repos first and stop when you hit the cap.
 
 **Hard cap: 16 finder agents per run.** Whatever the split suggests, you never dispatch more; drop
 back toward one agent per angle until you fit. Say in the report which row you used and how many
-agents ran.
+agents ran, split by tier.
 
 `--level high` drops the two `max`-only context angles (Prior review, Code comments) before applying
 the table; `--level medium` uses the `< 30` row whatever the diff size, and skips Phase 3.
@@ -267,8 +333,14 @@ and fixes land on unverified findings. Batching is what makes this phase actuall
 | Batch | Size | Tier |
 |---|---|---|
 | **P0 suspects** (`p0?: yes`) | 1 — alone, always | deep |
-| correctness candidates | group by file, **≤ 4** per batch | deep |
+| correctness candidates | group by file, **≤ 4** per batch | light |
 | cleanup candidates | group by file, **≤ 4** per batch | light |
+
+Only P0 suspects verify deep, and that is the safe direction: this phase can only **drop**
+candidates, and it drops one only by quoting the line that disproves it (see REFUTED below). A
+lighter verifier that is unsure keeps the candidate — the cost of that is one extra fix to consider
+in Phase 5, not a missed bug. The candidates where a wrong drop is unaffordable are exactly the P0
+suspects, and those still get a deep agent to themselves.
 
 Never mix classes in a batch. **Cap: 12 verifier agents** — over the cap, raise the non-P0 batch size
 to 8; P0 suspects stay solo whatever happens. Dispatch every batch in one message.
@@ -350,7 +422,7 @@ diff "$GD/feature-review.patch" <(git -C "$WT" diff HEAD)            # must be e
 ```
 
 A difference means a read-only agent wrote to the tree anyway — it happens when the
-`feature:review-finder` type didn't resolve and you fell back to `general-purpose`. Those edits are
+`feature:review-finder[-deep]` type didn't resolve and you fell back to `general-purpose`. Those edits are
 **not** review fixes: nothing verified them, and the caller is about to commit them under someone
 else's name. The second `diff` shows you exactly which hunks appeared. Undo them — `feature-review.patch`
 is the pre-review truth, so `git -C "$WT" checkout -- <path>` and re-apply the saved patch for that
@@ -445,8 +517,10 @@ review up as unaddressed reviewer feedback and starts answering itself.
 
 ## Red flags — STOP, you're breaking the contract
 - Reviewing `git diff HEAD` alone → no. Committed-but-unpushed work and untracked files are part of the scope (Phase 0) and are where the newest code lives.
-- A finder or verifier that edited a file → no. They run on `feature:review-finder`, which has no Edit/Write; if you fell back to `general-purpose`, Phase 4.5 is how you catch it.
-- Dispatching an agent without a `model` → no. The default puts retrieval work on the deep tier, roughly doubling the run for the same bugs (see the tier table).
+- A finder or verifier that edited a file → no. They run on `feature:review-finder[-deep]`, which have no Edit/Write; if you fell back to `general-purpose`, Phase 4.5 is how you catch it.
+- Sending every agent to one subagent type → no. The type carries the tier; using `-deep` for retrieval angles roughly doubles the run for the same bugs (see the tier table).
+- Inlining the diffs into a dozen briefs instead of building the pack → no. That is the same diff paid for a dozen times, and the deep agents pay the most for it.
+- Running the per-iteration pass at `level` instead of `working_level` → no. The pre-merge pass is what covers that code at full depth; paying twice for it buys nothing.
 - Multiplying the angle budget by the number of repos → no. The budget is for the whole run; the split rule is the only exception, and it has a hard cap of 16.
 - Finishing a run in which no verifier and no sweep agent ever ran → no. Fixes applied to unverified candidates aren't a review, they're an unreviewed rewrite.
 - Reporting a P0 instead of fixing it (when fixing is on) → no. The fix is the deliverable.
