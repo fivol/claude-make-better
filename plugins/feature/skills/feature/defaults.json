@@ -18,7 +18,9 @@
     "level": "max",
     "fix": true,
     "final_pass": true,
-    "final_comment": true
+    "final_comment": true,
+    "deep_agent_model": "opus",
+    "light_agent_model": "sonnet"
   },
   "proxy": {
     "enabled": true,

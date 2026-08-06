@@ -220,7 +220,7 @@ is summarized:
 {
   "task": "<task>",
   "mode": "<full|lite>",
-  "session_id": null,
+  "session_id": "<$CLAUDE_CODE_SESSION_ID>",
   "repos": {
     "<repo>": {
       "branch": "task-<task>",
@@ -236,8 +236,13 @@ is summarized:
 ```
 
 Update `pr` once the PR is created (Phase 2), and `dev_pid` whenever you (re)start a server.
-`session_id` is stamped each iteration (by the `iteration` skill, step 5) so the admin dashboard can
-resume the right chat. In `--lite` mode set `mode: "lite"` and leave `port`, `url`, `dev_pid` as `null`.
+In `--lite` mode set `mode: "lite"` and leave `port`, `url`, `dev_pid` as `null`.
+
+**Stamp `session_id` here, at creation** — read `$CLAUDE_CODE_SESSION_ID` (`echo` it in Bash; write
+`null` only if it is genuinely empty). It is what the admin dashboard's "continue chat" resumes, and
+the `iteration` skill only refreshes it at its step 5 — so a task that is created and then worked on
+elsewhere, or that never reaches step 5, has an unusable dashboard entry until it does. Writing it
+once here costs nothing and makes the entry work from iteration zero.
 
 After init completes, immediately proceed to the **first iteration** — reap, then the `iteration`
 skill (`iterate.md`).

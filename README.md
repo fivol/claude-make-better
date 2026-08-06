@@ -273,8 +273,10 @@ honest verdict per comment in the summary — see
 Before anything is committed it goes through the **review gate** — a subagent that never saw the
 conversation, hunts correctness bugs before cleanups, verifies each candidate before believing it,
 and fixes what survives. You get a cleaned diff plus a one-line tally, not a list of homework; the
-only thing that reaches the chat is what the reviewer refused to decide alone. It runs again on the
-whole branch before the merge, where it is the only pass that ever sees the conflict resolutions —
+only thing that reaches the chat is what the reviewer refused to decide alone. Its finders literally
+cannot edit your code (no `Edit`, no `Write` — fixing happens once, at the end), reasoning runs on
+Opus while retrieval runs on Sonnet, and verification is batched so it actually runs. It runs again on
+the whole branch before the merge, where it is the only pass that ever sees the conflict resolutions —
 see **[the review gate](docs/feature/workflow.md#the-review-gate)**.
 
 ## Docs

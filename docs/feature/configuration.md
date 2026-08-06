@@ -133,10 +133,12 @@ The review gate: an impartial pass that finds the change's own bugs and fixes th
 | Key | Default | Meaning |
 |---|---|---|
 | `enabled` | `true` | Run the gate at all. `false` ⇒ both passes are skipped silently. |
-| `level` | `"max"` | Angle budget: `max` — 13 angles, sweep pass, recall-biased; `high` — 10, sweep; `medium` — 8, no sweep. The diff's size collapses angles below this ceiling on its own, so a small change does not cost a large review. |
+| `level` | `"max"` | Angle budget: `max` — 13 angles, sweep pass, recall-biased; `high` — 11, sweep; `medium` — 4, no sweep. The budget is for the whole run, not per repo, and the diff's size collapses angles below this ceiling on its own — so neither a small change nor a second repo costs you a larger review. |
 | `fix` | `true` | Apply what the review finds. `false` ⇒ it only reports, and you get a findings list instead of a cleaned diff. |
 | `final_pass` | `true` | Run the whole-branch pass at finish, after the base is merged into the task branch — the only pass that sees the conflict resolutions and the interaction between iterations. |
-| `final_comment` | `true` | Post the final pass's summary to the PR as one comment (marked, so it never comes back as feedback). |
+| `final_comment` | `true` | Post the final pass's summary to the PR as one comment (marked, so it never comes back as feedback). Read by the skill itself on the pre-merge pass — no flag to remember. |
+| `deep_agent_model` | `"opus"` | Model for the agents that have to *reason*: the correctness angles, altitude, the cross-repo pass, and the verification of every correctness candidate and every P0 suspect. |
+| `light_agent_model` | `"sonnet"` | Model for the agents that mostly *retrieve*: reuse, simplification, efficiency, conventions, git history, prior review comments, code comments, the sweep, and the verification of cleanup candidates. Set both to `"opus"` to run everything deep. |
 
 ## `instructions[]`
 
