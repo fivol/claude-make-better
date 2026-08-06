@@ -48,8 +48,8 @@ Every iteration, in order, with the chat summary **last**:
 - **2 · Simplify** — a real `/simplify` invocation on the changed files (quality only, must not change
   behavior). Mandatory after any significant change; may skip a genuinely minor one — and it declares
   which (`simplify: ✓` / `simplify: skipped (minor)`).
-- **2.5 · Review** — an impartial pass that finds the change's own bugs and fixes them, in a
-  subagent that never saw the conversation. The last thing before the commit. Off with
+- **2.5 · Review** — an adversarial pass that finds the change's own bugs and fixes them, through
+  finders that never saw the conversation. Blocking, and the last thing before the commit. Off with
   `code_review.enabled: false`. See [the review gate](#the-review-gate) below.
 - **3 · Considerations** — validate each applicable cross-cutting dimension from the config's
   `considerations` list (mobile, RTL, cross-browser…) and report an explicit
@@ -97,10 +97,10 @@ configured under [`pr_feedback`](configuration.md#pr_feedback) and can be turned
 ## The review gate
 
 `/simplify` cleans code whose intent the agent knows. The review gate is deliberately the opposite:
-a **fork** — a subagent that never saw the conversation, cannot excuse anything, and judges the diff
-on what it actually says. It hunts correctness bugs first, then reuse, simplification, efficiency,
-altitude and convention violations, **verifies every candidate before believing it**, and fixes what
-survives. You get a cleaned diff, not a list of homework.
+its **finders never saw the conversation**, cannot excuse anything, and judge the diff on what it
+actually says. It hunts correctness bugs first, then reuse, simplification, efficiency, altitude and
+convention violations, **verifies every candidate before believing it**, and fixes what survives. You
+get a cleaned diff, not a list of homework.
 
 It runs twice, with different scopes, and both are load-bearing:
 
@@ -117,25 +117,39 @@ It runs twice, with different scopes, and both are load-bearing:
 The scope is why the per-iteration pass stays cheap: each run only ever looks at what is new, so
 running it at full depth every time costs a review proportional to the change, not to the branch.
 
-Three things keep that promise honest inside the fork:
+What keeps that promise honest:
 
+- **It blocks.** The gate runs inline, in the agent's own turn, so nothing can be committed, pushed
+  or answered while it is still working. A detached version of this gate once let a turn end on the
+  dispatch: the chat went quiet, the next turn started a *second* full review of the same worktree,
+  and the change was committed and pushed before either of them reported.
+- **Blindness sits at the leaves, not at the root.** The agent orchestrating the review knows what
+  the change was *for* — the only way to tell a deliberate behavior change from a bug. The finders
+  and verifiers it dispatches get the diff and nothing else, which is what makes their judgement
+  worth having.
 - **The finders can't write.** Every agent that searches, verifies or sweeps runs as
   `feature:review-finder` or `feature:review-finder-deep`, subagents shipped with the plugin that
   simply have no `Edit` and no `Write`. An agent that "helpfully" fixes what it found would be
   writing unreviewed code into the commit you are about to make — so the tools aren't there. Fixing
-  happens once, at the end, in the fork itself.
+  happens once, at the end, by the agent that called the gate.
 - **Two model tiers, carried by the subagent type.** Deciding whether a condition inverts on an
   empty list is reasoning; quoting a rule out of a `CLAUDE.md` or reading `git blame` is retrieval.
   The first runs on [`deep_agent_model`](configuration.md#code_review) (Opus), the second on
   `light_agent_model` (Sonnet) — about half the cost of running everything deep, for the same bugs.
   Each type declares its own model, so forgetting to pass one can't quietly put retrieval on Opus.
-- **One diff pack, read by everyone.** The fork writes each repo's diff, file inventory and commit
-  log to a temp dir once, and hands the finders paths. A dozen agents each rebuilding the same diff
-  is the same work paid for a dozen times.
-- **Verification is batched, not per-candidate.** Candidates are grouped by file, up to four to an
-  agent, correctness apart from cleanup — except a suspected P0, which always gets an agent to
-  itself on the deep tier. One agent per candidate is what makes the phase quietly not run at all,
-  and fixes then land on findings nobody checked.
+- **One angle, one file, read by the agent that runs it.** Each review angle lives in its own brief
+  under `skills/review/references/angles/`. The orchestrator never reads them — it hands out paths —
+  so a dozen angle descriptions cost a dozen leaf contexts instead of one shared one.
+- **One diff pack, read by everyone.** `scripts/pack.sh` writes each repo's whole scope — the
+  committed range, the uncommitted diff and every untracked file inlined — to a temp dir once, and
+  the finders get paths. A dozen agents each rebuilding the same diff is the same work paid for a
+  dozen times, and getting that range right by hand is the step that silently narrows a review.
+- **Verification is batched, and judges the finder's evidence.** Every candidate carries the lines
+  its finder quoted, so a verifier judges instead of re-investigating — a phase that re-ran the
+  search from scratch once cost more than the search that fed it. Candidates are grouped by file, up
+  to four to an agent, correctness apart from cleanup, except a suspected P0, which always gets an
+  agent to itself on the deep tier. One agent per candidate is what makes the phase quietly not run
+  at all, and fixes then land on findings nobody checked.
 
 The angle budget is for the **run**, not per repo: a second repo adds diff for the same agents to
 read, not a second set of agents.
@@ -145,8 +159,8 @@ read, not a second set of agents.
 (`max`) — because the pre-merge pass re-reviews every line of the branch anyway, on the integrated
 code. Paying full depth on both is duplicated work, not extra coverage.
 
-Three things come back into the chat, and nothing else — the report itself stays in the fork, capped
-at 50 lines so the one P0 line in it actually gets read:
+Three things come back into the chat, and nothing else — the report itself is capped at 50 lines so
+the one P0 line in it actually gets read:
 
 1. a status line, `review: ✓ max — fixed 4 (P0 1) · skipped 1`;
 2. **Needs you** — findings the reviewer refused to decide alone (two defensible fixes, or a fix that

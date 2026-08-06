@@ -270,15 +270,17 @@ iteration, does or argues with each, replies in the thread citing the fixing com
 honest verdict per comment in the summary — see
 **[PR review feedback](docs/feature/workflow.md#pr-review-feedback)**.
 
-Before anything is committed it goes through the **review gate** — a subagent that never saw the
-conversation, hunts correctness bugs before cleanups, verifies each candidate before believing it,
-and fixes what survives. You get a cleaned diff plus a one-line tally, not a list of homework; the
-only thing that reaches the chat is what the reviewer refused to decide alone. Its finders literally
-cannot edit your code (no `Edit`, no `Write` — fixing happens once, at the end), reasoning runs on
-Opus while retrieval runs on Sonnet, and verification is batched so it actually runs. It runs again on
-the whole branch before the merge, where it is the only pass that ever sees the conflict resolutions —
-and because that pass re-reviews everything at full depth, the per-iteration one runs cheap by
-default. See **[the review gate](docs/feature/workflow.md#the-review-gate)**.
+Before anything is committed it goes through the **review gate** — a blocking pass whose finders
+never saw the conversation, hunting correctness bugs before cleanups, verifying each candidate before
+believing it, and fixing what survives. You get a cleaned diff plus a one-line tally, not a list of
+homework; the only thing that reaches the chat is what the reviewer refused to decide alone. Those
+finders literally cannot edit your code (no `Edit`, no `Write` — fixing happens once, at the end),
+each one reads its own angle from its own file, reasoning runs on Opus while retrieval runs on
+Sonnet, and verification is batched and judges the evidence the finder quoted rather than searching
+again. It runs again on the whole branch before the merge, where it is the only pass that ever sees
+the conflict resolutions — and because that pass re-reviews everything at full depth, the
+per-iteration one runs cheap by default. See
+**[the review gate](docs/feature/workflow.md#the-review-gate)**.
 
 ## Docs
 

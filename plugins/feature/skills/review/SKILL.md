@@ -1,21 +1,35 @@
 ---
 name: review
 description: Deep adversarial review of the change in flight — correctness bugs first, then reuse/simplification/efficiency/altitude/conventions, plus git history, prior review comments and cross-repo integration — every candidate independently verified, then fixed in place. Use before a change is committed, and again on the whole branch before it merges. The `iteration` skill invokes it as a mandatory gate; it also runs standalone on any repo. Not a style pass — for pure cleanup use `/simplify`.
-context: fork
 ---
 
 # Review — find what's wrong with this change, then fix it
 
-You are reviewing a change **you did not write**. Nothing in this prompt is a defence of the code:
-the author's intent, the chat that produced it and the reasons behind it are not available to you,
-and that is deliberate. Judge the diff on what it actually says.
+> gather scope → build the pack → find candidates → verify in batches → sweep → cross-repo → fix → report
 
-Your job is not to produce a report the user reads and acts on. It is to **leave the tree better
-than you found it** and hand back a short, honest account of what you changed, what you refused to
-change, and what only the user can decide.
+Your job is not to produce a report the user reads and acts on. It is to **leave the tree better than
+you found it** and hand back a short, honest account of what you changed, what you refused to change,
+and what only the user can decide.
 
-> gather scope → find candidates → verify in batches → sweep for gaps → cross-repo pass → check the
-> tree is untouched → fix → report
+## This skill runs inline, and that is the whole design
+
+**Do not run this skill in a fork, a background agent, or anything else that returns before the
+review is done.** It is a gate: the caller must not be able to commit, push or answer the user while
+it is still running. A detached run has already produced the worst failure this gate has had — the
+caller ended its turn on the dispatch, the user asked why nothing happened, the next turn started a
+*second* full fan-out over the same worktree, and the change was committed and pushed eight minutes
+before either review returned. Two competing reviews, twenty-eight million tokens, and the gate's own
+fixes landed as loose uncommitted work on top of the push.
+
+So: you orchestrate **in this context**. Only the leaf agents are separate, and they are separate for
+a reason that has nothing to do with hiding latency — see below.
+
+**Blindness belongs at the leaves, not at the root.** The finders and verifiers see the diff and
+nothing else: not the task, not the chat, not the author's reasoning. That is what makes their
+judgement worth having. You are not blind, and that is deliberate too — you know what the change was
+*for*, which is the only way to tell a deliberate behavior change from a bug, and the one call the
+finders provably cannot make. What you must never do is defend the code. When a candidate lands,
+read the line as if a stranger wrote it.
 
 ## Invocation
 
@@ -67,149 +81,142 @@ Agent(subagent_type: "feature:review-finder-deep", model: "<deep_agent_model>", 
 Agent(subagent_type: "feature:review-finder",      model: "<light_agent_model>", prompt: "<the brief>")
 ```
 
-Both ship with this plugin and have **no `Edit` and no `Write`** — a structural guarantee, not a
-request in a prompt. Why it is structural: a finder that "helpfully" fixes what it found writes code
-no one reviewed into a diff the caller is about to commit — and it has already shipped regressions
-here. Finding is theirs; fixing is Phase 5's, and Phase 5 is yours.
+Both have **no `Edit` and no `Write`** — structural, not a request in a prompt. A finder that
+"helpfully" fixes what it found writes code no one reviewed into a diff the caller is about to
+commit, and it has already shipped regressions here. Finding is theirs; fixing is Phase 5's, and
+Phase 5 is yours.
 
-**The tier is structural too.** `review-finder-deep` declares `opus` and `review-finder` declares
-`sonnet` in their own frontmatter, so a dispatch that forgets `model` still lands on the right tier.
-Pass `model` anyway — it is what makes the config's `deep_agent_model` / `light_agent_model` apply —
-but the type is what the run's cost actually rests on. Picking the type by tier is not optional: a
-run that sent every angle to one type was the single largest cost overrun this gate has had, because
-the retrieval angles quietly ran deep.
-
-If a subagent type doesn't resolve, retry the bare `review-finder-deep` / `review-finder`; if that
-fails too, fall back to `general-purpose`, put the read-only rule **and** the right `model` in the
-prompt in full, and say in the report that the finders ran unsandboxed.
-
-| Tier | Type · `model` | Runs |
-|---|---|---|
-| **deep** | `feature:review-finder-deep` · config `deep_agent_model` (`opus`) | Angles A, B, C, D+E, Altitude · the cross-repo pass (Phase 4) · verification of P0 suspects |
-| **light** | `feature:review-finder` · config `light_agent_model` (`sonnet`) | Angles Reuse, Simplification, Efficiency, Conventions, History, Prior review, Code comments · the sweep (Phase 3) · verification of correctness and cleanup candidates |
+**The tier is structural too**: each type declares its own model, so a dispatch that forgets `model`
+still lands on the right tier. Pass `model` anyway — it is what makes the config's
+`deep_agent_model` / `light_agent_model` apply — but the type is what the run's cost rests on.
+Sending every angle to one type was the single largest cost overrun this gate has had.
 
 The split is by **what the agent must actually do**, not by how much the finding matters. Deciding
-whether a condition inverts on an empty list is reasoning; quoting the rule out of a `CLAUDE.md`,
+whether a condition inverts on an empty list is reasoning. Quoting a rule out of a `CLAUDE.md`,
 reading `git log -L` output, filtering `gh api` results or naming the helper that already exists is
-retrieval. Running retrieval on the deep tier roughly doubles the cost of the run and finds the same
-bugs.
+retrieval — and running retrieval deep roughly doubles the run for the same bugs.
 
-If the Agent tool is unavailable, do not error — work through every angle yourself, sequentially, in
-this context, and say so in the report.
+Type doesn't resolve ⇒ retry the bare `review-finder-deep` / `review-finder`; still failing ⇒ fall
+back to `general-purpose` with the read-only rule **and** the right `model` written into the prompt,
+and say in the report that the finders ran unsandboxed. No Agent tool at all ⇒ do not error: work
+every angle yourself, sequentially, in this context, and say so.
 
 ## Phase 0 — Resolve the scope
 
-**Feature context** (a `<worktrees>/<task>/.feature.json` exists): each involved repo has its own
-worktree and base branch — read them from that file, and review **every** repo with a diff.
-**Standalone**: the current repo only; `BASE` is its default branch.
+**Resolve from where you are, do not go looking.** `git -C . rev-parse --show-toplevel` and, in a
+feature context, the `.feature.json` at or above it give you the worktree, the repos and each repo's
+base branch directly. Only if cwd is outside any workspace do you fall back to scanning
+`<root>/worktrees/`, and then **an ambiguous scan is a stop, not a guess**: more than one candidate
+workspace ⇒ say which ones and ask. Picking "the one that happens to have a diff right now" reviews
+whichever worktree someone else was last working in.
 
-Per repo, `WT` = its worktree/checkout, `BASE` = its base branch. Collect three things — the third is
-the one reviewers forget:
+Per repo, `WT` = its worktree/checkout, `BASE` = its base branch.
+
+### Build the diff pack — one command per repo
+
+**Hand the finders paths, never instructions to re-derive the diff.** A dozen agents each rebuilding
+the same diff with their own `git` calls and their own exploratory `ls` is the same work paid for a
+dozen times, and the deep tier pays the most for it.
 
 ```bash
-# --scope working: everything not yet in the PR
-git -C "$WT" diff '@{upstream}..HEAD'         # committed this iteration, not pushed (quote the braces)
-git -C "$WT" diff HEAD                        # uncommitted
-# no upstream yet (branch never pushed) → the whole branch is "not yet in the PR":
-git -C "$WT" diff "origin/$BASE...HEAD"
-
-# --scope branch: the whole change as it will land
-git -C "$WT" fetch -q origin "$BASE" && git -C "$WT" diff "origin/$BASE...HEAD"
-git -C "$WT" diff HEAD                        # plus anything still uncommitted
-
-# ALWAYS, in both scopes — new files are invisible to `git diff`
-git -C "$WT" ls-files --others --exclude-standard
+PACK="${TMPDIR:-/tmp}/feature-review-$(basename "$ROOT")-$$"
+bash "${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/pack.sh" \
+     --wt "$WT" --repo "<repo>" --scope "<working|branch>" --base "$BASE" --out "$PACK"
 ```
 
-Read every untracked file in full and treat it as an all-added hunk. A brand-new file is where the
-density of unreviewed logic is highest, and it is exactly what a plain `git diff` misses.
+It writes `<repo>.diff`, `.files`, `.log` and `.head`, and prints the one line you need next:
 
-Empty on all three ⇒ that repo is out of scope; say so and move on. **If every repo is empty, stop
-and say the scope was empty** — never invent a review of already-merged code.
+```
+bitfront: 64 changed lines · 5 files · 2 commits · head d68f4cd9 · range @{upstream}..HEAD
+```
+
+The changed-line count is the input to the angle budget below — take it from here rather than
+counting again. `.head` is not decoration: Phase 5 compares against it to catch a target that moved.
+
+The script owns the parts that quietly go wrong by hand: it resolves the range for the scope
+(including a branch that was never pushed, where the whole branch is unreviewed), it always adds the
+uncommitted diff on top, and it inlines **every untracked file as an all-added hunk** — a brand-new
+file is where the density of unreviewed logic is highest and is exactly what a plain `git diff`
+misses. A pack built from one range alone silently narrows the review to less than the scope.
+
+`0 changed lines` for a repo ⇒ that repo is out of scope; say so and move on. **Every repo empty ⇒
+stop and say the scope was empty** — never invent a review of already-merged code.
+
+The pack lives outside every repo, so it cannot dirty a worktree. Remove it when the run ends. If
+`$TMPDIR` is unwritable, inline the diffs into the briefs instead and say so in the report, because
+the run will cost noticeably more.
 
 Test and fixture files are **in** scope, judged for wrong assertions, setup/teardown asymmetry and
 cases the change silently stopped covering — not for style.
 
-### Build the diff pack — once, for everyone
-
-You have just computed every repo's diff. **Write it down, and hand the finders paths instead of
-instructions to re-derive it.** Twelve agents each rebuilding the same diff with their own `git diff`
-and their own exploratory `ls` is the same work paid for twelve times, and it happens on the deep
-tier too.
-
-The pack must contain **everything the scope covers** — all of it, in one file per repo. That is the
-committed range *and* the uncommitted diff *and* every untracked file; a pack built from one range
-silently narrows the review to less than Phase 0 resolved.
-
-```bash
-PACK="${TMPDIR:-/tmp}/feature-review-$(basename "$ROOT")-$$"
-mkdir -p "$PACK"
-
-# RANGE: --scope working → '@{upstream}..HEAD'  (or "origin/$BASE...HEAD" when never pushed)
-#        --scope branch  → "origin/$BASE...HEAD"
-{
-  git -C "$WT" diff "$RANGE"                    # committed, in scope
-  git -C "$WT" diff HEAD                        # uncommitted — in scope in BOTH scopes
-  for f in $(git -C "$WT" ls-files --others --exclude-standard); do
-    printf '\n--- NEW FILE: %s ---\n' "$f"; cat "$WT/$f"   # untracked: an all-added hunk
-  done
-} > "$PACK/<repo>.diff"
-
-{ git -C "$WT" diff --name-status "$RANGE"
-  git -C "$WT" diff --name-status HEAD
-  git -C "$WT" ls-files --others --exclude-standard | sed 's/^/A\t/'
-} | sort -u -k2 > "$PACK/<repo>.files"
-git -C "$WT" log --oneline "origin/$BASE..HEAD" > "$PACK/<repo>.log"
-```
-
-Check `wc -l "$PACK/<repo>.diff"` against the changed-line count you computed for the angle budget —
-if the pack is materially smaller, a part of the scope didn't make it in, and every finder is about
-to review the wrong thing.
-
-Every brief in Phases 1–4 then opens with the pack: the repo's `.diff` path and its line count, the
-`.files` inventory, the `.log`, and the worktree path for reading the real files around a hunk. Say
-explicitly: **read the diff from that file; do not rebuild it with `git`.**
-
-The pack lives outside every repo, so it can't dirty a worktree and Phase 4.5 never sees it. Remove
-it when the run ends. If you cannot write to `$TMPDIR`, skip the pack and inline the diffs into the
-briefs as before — say so in the report, because the run will cost noticeably more.
-
-Last thing before you fan out — snapshot each repo's working state so Phase 4.5 can prove nothing
-wrote to it. Both files go inside that repo's git dir: per-worktree, and never listed by `git status`.
-Two snapshots, because one isn't enough — the status catches files created or newly modified, the
-patch catches an edit to a file that was already dirty before the review started.
-
-```bash
-GD="$(git -C "$WT" rev-parse --absolute-git-dir)"
-git -C "$WT" status --porcelain > "$GD/feature-review.pre"
-git -C "$WT" diff HEAD          > "$GD/feature-review.patch"
-```
-
-If those writes are refused (a sandbox that pins you to the worktree), run the two read commands
-instead and keep their output to compare against in Phase 4.5.
-
 ## Phase 1 — Find candidates
 
-Run the angles below as **read-only subagents** (see the fan-out contract above), all dispatched in
-one message so they run concurrently. Each returns up to **8 candidates per repo it covers**, every
-one shaped as:
+Run the angles below as **read-only subagents**, all dispatched in one message so they run
+concurrently.
 
-`repo` · `file` · `line` · one-line `summary` · concrete `failure_scenario` ·
-`class` (**correctness** | **cleanup**) · `p0?` (yes when the scenario is production breakage, data
-loss or a broken contract)
+### The brief — three lines, plus the angle's own file
 
-`class` and `p0?` are not decoration — Phase 2 routes on them.
+You do **not** read the angle files. Each one is a self-contained brief; you hand the finder its
+path and it reads its own. That is what keeps this phase's cost in the leaves, where it belongs.
+
+```
+REPO <name> · worktree <WT>
+Pack: <PACK>/<repo>.diff (<n> lines) · <PACK>/<repo>.files · <PACK>/<repo>.log
+Read the diff from those files. Do NOT rebuild it with git.
+
+Your job: read <SKILL_DIR>/references/angles/<file>.md and do exactly that, on this pack.
+Return up to 8 candidates per repo, in the shape your agent definition specifies.
+```
+
+`<SKILL_DIR>` is `${CLAUDE_PLUGIN_ROOT}/skills/review` — resolve it to an absolute path before you
+put it in a brief. A merged angle names both files and reports under both names.
+
+Two angles need one extra line in the brief, and only those two: **Conventions** gets the assembled
+standing instructions (the `--instructions` output above) pasted in, because it must quote them;
+**Prior review** gets the PR URL or `owner/repo`.
+
+### The candidate shape
+
+The finders' own definition spells out the block they return: `repo` · `file` · `line` · `summary` ·
+`failure_scenario` · `evidence` · `class` · `p0`. Three of those are yours to act on:
+
+- **`class`** (correctness | cleanup) and **`p0`** route the candidate to its batch in Phase 2. They
+  are not decoration.
+- **`evidence`** — the lines the finder actually relied on, quoted — is what Phase 2 judges from, and
+  what stops a verifier re-running the whole investigation from scratch. That has already made
+  verification cost *more* than the search that fed it. A candidate with no evidence goes back to its
+  finder, or to the verifier flagged as unevidenced.
 
 Do NOT let one angle's conclusion suppress another's — if two angles flag the same line for
 different reasons, record both. Pass through every candidate with a nameable failure scenario:
 finders that silently drop half-believed candidates bypass the verify step, and that is the dominant
-cause of misses. Dropping is Phase 2's job, not yours.
+cause of misses. Dropping is Phase 2's job, not theirs.
+
+Keep the agents' output out of your context beyond the candidates themselves. A finder that returns
+prose gets read for its findings; the prose does not travel any further.
+
+### The angle registry
+
+| Angle | Tier | Brief |
+|---|---|---|
+| **A** — line-by-line diff scan | deep | `angles/a-line-scan.md` |
+| **B** — removed-behavior auditor | deep | `angles/b-removed-behavior.md` |
+| **C** — cross-file tracer | deep | `angles/c-cross-file.md` |
+| **D** — language pitfalls | deep | `angles/d-language-pitfalls.md` |
+| **E** — wrapper/proxy correctness | deep | `angles/e-wrapper-proxy.md` |
+| **Altitude** — right depth, or a bandaid | deep | `angles/altitude.md` |
+| **Reuse** — it already exists | light | `angles/reuse.md` |
+| **Simplification** — complexity added | light | `angles/simplification.md` |
+| **Efficiency** — work wasted | light | `angles/efficiency.md` |
+| **Conventions** — quoted rule violations | light | `angles/conventions.md` |
+| **History** — re-breaks an old fix | light | `angles/history.md` |
+| **Prior review** — reviewers already said it (`max`) | light | `angles/prior-review.md` |
+| **Code comments** — the change lies to them (`max`) | light | `angles/code-comments.md` |
 
 ### Angle budget — one budget for the whole run
 
-Count changed lines **across all repos in scope** (`git diff --shortstat` per repo, plus the lines of
-untracked files) and pick one row. That number is the angle count for the **run**. The number of
-repos never multiplies it.
+Sum the changed-line counts `pack.sh` printed **across all repos in scope** and pick one row. That
+number is the angle count for the **run**. The number of repos never multiplies it.
 
 The **deep** column is what the row actually costs — a deep agent is roughly five times a light one,
 so the rows cut deep agents first and leave the light angles alone.
@@ -237,94 +244,10 @@ agents ran, split by tier.
 `--level high` drops the two `max`-only context angles (Prior review, Code comments) before applying
 the table; `--level medium` uses the `< 30` row whatever the diff size, and skips Phase 3.
 
-### Angle A — line-by-line diff scan · deep
-Read every hunk, line by line. Then Read the enclosing function for each hunk — bugs in unchanged
-lines of a touched function are in scope (the change re-exposes them, or fails to fix them). For
-every line ask: what input, state, timing or platform makes this line wrong? Inverted/wrong
-conditions, off-by-one, null/undefined deref, missing `await`, falsy-zero checks, wrong-variable
-copy-paste, error swallowed in a catch that should propagate, unescaped regex metacharacters.
-
-### Angle B — removed-behavior auditor · deep
-For every line the diff DELETES or replaces, name the invariant or behavior it enforced, then search
-the new code for where that invariant is re-established. If you can't find it, that's a candidate: a
-removed guard, a dropped error path, a narrowed validation, a deleted test that covered a real case.
-
-### Angle C — cross-file tracer · deep
-For each function the diff changes, Grep for its callers and check whether the change breaks any call
-site: a new precondition, a changed return shape, a new exception, a timing/ordering dependency. Also
-check callees — does a parallel change in the same diff make a call unsafe?
-
-### Angle D — language-pitfall specialist · deep
-The classic pitfalls of this diff's language/framework: JS falsy-zero, `==` coercion,
-closure-captured loop var; Python mutable default args, late-binding closures; Go nil-map write,
-range-var capture; SQL injection; timezone/DST drift; float equality; unawaited promises. Flag any
-instance the diff introduces.
-
-### Angle E — wrapper/proxy correctness · deep
-When the change adds or modifies a type that wraps another (cache, proxy, decorator, adapter): check
-that every method routes to the wrapped instance and not back through a registry/session/global — a
-caching provider whose `delegate` resolves ids via `session.get(...)` instead of `delegate.get(...)`
-re-enters the cache or recurses. Check too that the wrapper forwards every method its callers use.
-
-### Angle Reuse · light
-Flag new code that re-implements something the codebase already has. Grep shared/utility modules and
-the files adjacent to the change, and **name the existing helper to call instead** — a reuse finding
-without the replacement named is not actionable.
-
-### Angle Simplification · light
-Unnecessary complexity the diff adds: redundant or derivable state, copy-paste with slight variation,
-deep nesting, dead code left behind. Name the simpler form that does the same job.
-
-### Angle Efficiency · light
-Wasted work the diff introduces: redundant computation or repeated I/O, independent operations run
-sequentially, blocking work added to startup or a hot path. Also long-lived objects built from
-closures or captured environments — they keep the whole enclosing scope alive for the object's
-lifetime, a leak when that scope holds large values; prefer a structure that copies only the fields
-it needs.
-
-### Angle Altitude · deep
-Is each change made at the right depth, or is it a bandaid? Special cases layered onto shared
-infrastructure are the tell that the fix isn't deep enough — prefer generalizing the underlying
-mechanism over accumulating special cases. This is the one angle allowed to say "the whole approach
-is one level too shallow"; say it, then let Phase 5 decide whether it's fixable here.
-
-### Angle Conventions · light
-Find every rule that governs the changed code and check the diff against it:
-
-- `~/.claude/CLAUDE.md`, the repo-root `CLAUDE.md` / `CLAUDE.local.md`, and any `CLAUDE.md` in a
-  directory that is an ancestor of a changed file (a directory's file applies only at or below it);
-- the workspace's standing instructions — `.claude/feature/INSTRUCTIONS.md` and the config's
-  `instructions` / `repos[].instructions` (the `--instructions` call above returns them assembled).
-
-Only flag a violation you can **quote**: the exact rule and the exact line that breaks it. No style
-preferences, no "spirit of the doc" inferences. Name the source file and quote the rule in the
-finding so the report can cite it. Nothing applies ⇒ return nothing.
-
-### Angle History — what the code's past says · light
-`git -C "$WT" log -L <start>,<end>:<file>` and `git blame` on the changed regions. You are looking
-for a change that re-breaks something already fixed: a guard added by an earlier bugfix and now
-removed, a value re-hardcoded that was made configurable on purpose, a workaround deleted whose
-reason still holds. Cite the commit that established the behavior.
-
-### Angle Prior review — what reviewers already said here (level `max`) · light
-```bash
-gh api "repos/{owner}/{repo}/pulls/comments?per_page=100" --paginate \
-  -q '.[] | select(.path=="<changed file>") | "\(.path):\(.line) \(.user.login): \(.body)"'
-```
-Review comments left on **earlier** PRs that touched these same files. A point already made once and
-now repeated in the diff is a high-value finding: it is a known team preference the change walked
-back into. Cite the old comment's URL.
-
-### Angle Code comments — does the change honour what the code asks for (level `max`) · light
-Read the comments and docstrings in and around the changed regions — `NOTE:`, `HACK:`, "keep in sync
-with…", "must run before…", "do not call directly", invariant notes above a function. Flag where the
-change violates one, and where it invalidates one (a comment that is now a lie is a finding, and its
-fix is usually one line).
-
 ## Phase 2 — Verify, in batches
 
 Dedup first: candidates pointing at the same line/mechanism collapse into one, keeping the most
-concrete failure scenario.
+concrete failure scenario and the union of their evidence.
 
 Then **batch — one verifier agent per batch, not per candidate.** A verifier per candidate does not
 survive contact with a real diff: 40 candidates means 40 agents, so the phase gets quietly skipped
@@ -332,42 +255,29 @@ and fixes land on unverified findings. Batching is what makes this phase actuall
 
 | Batch | Size | Tier |
 |---|---|---|
-| **P0 suspects** (`p0?: yes`) | 1 — alone, always | deep |
+| **P0 suspects** (`p0: yes`) | 1 — alone, always | deep |
 | correctness candidates | group by file, **≤ 4** per batch | light |
 | cleanup candidates | group by file, **≤ 4** per batch | light |
 
 Only P0 suspects verify deep, and that is the safe direction: this phase can only **drop**
-candidates, and it drops one only by quoting the line that disproves it (see REFUTED below). A
-lighter verifier that is unsure keeps the candidate — the cost of that is one extra fix to consider
-in Phase 5, not a missed bug. The candidates where a wrong drop is unaffordable are exactly the P0
-suspects, and those still get a deep agent to themselves.
+candidates, and it drops one only by quoting the line that disproves it. A lighter verifier that is
+unsure keeps the candidate — the cost of that is one extra fix to consider in Phase 5, not a missed
+bug. The candidates where a wrong drop is unaffordable are exactly the P0 suspects, and those still
+get a deep agent to themselves.
 
 Never mix classes in a batch. **Cap: 12 verifier agents** — over the cap, raise the non-P0 batch size
 to 8; P0 suspects stay solo whatever happens. Dispatch every batch in one message.
 
-Each verifier gets the diff, the relevant file(s) and its batch **numbered**, and returns **one
-verdict per number, in order, and nothing else**. Fewer verdicts than candidates is a failed run:
-re-dispatch the missing ones — never read a missing verdict as REFUTED.
+The brief is the same three lines as Phase 1, plus:
 
-Batching does not lower the bar. Each candidate is judged on its own evidence: a verifier must not
-refute one because a neighbour in its batch was refuted, nor confirm one because a neighbour was
-confirmed.
+```
+Your job: read <SKILL_DIR>/references/verify.md and do exactly that.
+Candidates, numbered — each with the evidence its finder quoted:
+1. ...
+```
 
-The verdicts:
-
-- **CONFIRMED** — can name the inputs/state that trigger it and the wrong output or crash. Quotes the line.
-- **PLAUSIBLE** — the mechanism is real, the trigger is uncertain (timing, env, config). States what would confirm it.
-- **REFUTED** — factually wrong (the code doesn't say that) or already guarded elsewhere. Quotes the line that proves it.
-
-**PLAUSIBLE by default.** Do not refute a candidate for being "speculative" or "depending on runtime
-state" when that state is realistic: concurrency races, null on a rare-but-reachable path (error
-handler, cold cache, missing optional field), falsy-zero treated as missing, off-by-one on a boundary
-the code doesn't exclude, retry storms and partial failures, a regex or allowlist that lost its
-anchor. All PLAUSIBLE.
-
-**REFUTED only when constructible from the code**: factually wrong (quote the actual line); provably
-impossible (show the type, constant or invariant); already handled in this diff (cite the guard); or
-pure style with no observable effect.
+Each verifier returns **one verdict per number, in order, and nothing else**. Fewer verdicts than
+candidates is a failed run: re-dispatch the missing ones — never read a missing verdict as REFUTED.
 
 Keep CONFIRMED and PLAUSIBLE, drop REFUTED. One non-REFUTED verdict carries the candidate — this is
 recall mode, do not drop on uncertainty.
@@ -382,56 +292,36 @@ recall mode, do not drop on uncertainty.
 
 ## Phase 3 — Sweep for gaps (levels `max` / `high`) — and it always runs
 
-One **light-tier** agent for the run, as a fresh reviewer holding the verified list. (One per repo
-only when Phase 1's per-hunk split applied, i.e. 2+ repos over 300 changed lines each.) Its only job
-is what is **not** on that list — no re-deriving, no re-confirming. Point it at what a first pass
-systematically misses: moved or extracted code that dropped a guard or an anchor; second-tier
-footguns (a default evaluated once at import, non-deterministic hashing, a lock scope quietly shrunk,
-a predicate with side effects); setup/teardown asymmetry in tests; a config default flipped. Up to 8
-new candidates, each naming something not already listed; nothing new ⇒ return empty, never pad. New
-candidates go through Phase 2 like the rest.
+One **light-tier** agent for the run, briefed with `<SKILL_DIR>/references/sweep.md` and handed the
+verified list. (One per repo only when Phase 1's per-hunk split applied, i.e. 2+ repos over 300
+changed lines each.) New candidates go through Phase 2 like the rest.
 
 This phase is one cheap agent. Skipping it because the run already feels big is a silent downgrade of
 the level the caller asked for — if you truly cannot run it, say so in the report header.
 
 ## Phase 4 — Cross-repo integration (feature context, 2+ repos) · deep
 
-One subagent that sees **all** the repos' diffs at once and answers a single question: *is anything
-half-shipped between them?* Nothing else in this skill can see across repo boundaries, which is
-exactly why this class of defect survives every other phase.
-
-- **Backend ↔ frontend contract.** A changed endpoint (path, request shape, response field, status, auth, removal) with a consumer in another repo still on the old shape → P0. And the mirror: a frontend calling an endpoint whose backend change isn't in this change set at all.
-- **Shared package.** One repo consumes another as a published dependency and is linked locally in dev. If this change touches the package the consumer depends on, the package must be published/bumped and the consumer's dependency updated — otherwise production runs the old code while dev looks fine. P0/P1.
-- **Cross-repo flags and experiments.** A flag, cohort constant or shared hashing rule that ships on one side only.
-- **Migrations and ordering.** A new migration against the code currently running in production during the deploy window; a destructive migration; a column a not-yet-deployed consumer needs.
-- **Env, secrets, config keys.** A newly required key production doesn't have set boots it broken. Test-only credentials shipped as production-ready.
-- **Coupled but not included.** The diff of an included repo references work that lives in a repo not in this change set — the classic forgotten repo.
-
-Each item names the gap **and what would close it**. These are integration findings; they skip
-Phase 2 (there is no single line to refute) and go straight to triage as P0/P1.
-
-## Phase 4.5 — The tree must still be untouched
-
-Phases 1–4 are read-only by construction, so nothing in them can have changed a file. Prove it, per
-repo, before you start fixing:
-
-```bash
-GD="$(git -C "$WT" rev-parse --absolute-git-dir)"
-diff "$GD/feature-review.pre"   <(git -C "$WT" status --porcelain)   # must be empty
-diff "$GD/feature-review.patch" <(git -C "$WT" diff HEAD)            # must be empty
-```
-
-A difference means a read-only agent wrote to the tree anyway — it happens when the
-`feature:review-finder[-deep]` type didn't resolve and you fell back to `general-purpose`. Those edits are
-**not** review fixes: nothing verified them, and the caller is about to commit them under someone
-else's name. The second `diff` shows you exactly which hunks appeared. Undo them — `feature-review.patch`
-is the pre-review truth, so `git -C "$WT" checkout -- <path>` and re-apply the saved patch for that
-path; a file the agent created is simply deleted. Then record it in the report as
-`finders wrote to <n> file(s) — reverted`. Never carry an unexplained edit into Phase 5.
+One subagent, briefed with `<SKILL_DIR>/references/cross-repo.md`, that sees **all** the repos' packs
+at once. Its findings skip Phase 2 — there is no single line to refute — and go straight to triage as
+P0/P1.
 
 ## Phase 5 — Triage, then fix
 
-Rank what survived. Correctness always outranks cleanup, altitude and conventions.
+**First, check the target hasn't moved.** You have been running for minutes, and in a live workspace
+that is long enough for the tree to change under you:
+
+```bash
+git -C "$WT" rev-parse HEAD | diff - "$PACK/<repo>.head"   # same commit the pack was cut from?
+```
+
+A different sha, or a working diff that no longer matches the pack, means the change was committed,
+amended, rebased or rewritten while you reviewed. That is **not** an error and nothing gets reverted —
+you are a reviewer, and the tree belongs to whoever is working in it. It only means your findings
+were computed against a state that has moved on. Re-read the current state of each surviving
+finding's lines before you fix anything, drop the ones the new state already resolved, and put one
+line in the report saying the target moved.
+
+Then rank what survived. Correctness always outranks cleanup, altitude and conventions.
 
 | | Means |
 |---|---|
@@ -445,6 +335,11 @@ deliverable, and an unfixed P0 that was merely described is a failed review.
 
 Fix in the smallest form that actually resolves the finding, in the style of the surrounding code,
 and re-read the file after editing to be sure the fix is coherent with the rest of the function.
+
+This is also the one place an **experiment** belongs. A verifier that returned PLAUSIBLE because the
+verdict needed a running app, a rendered page or a real request handed you that experiment on
+purpose: you have the tools and the context to run it, and it is far cheaper here than as a read-only
+agent guessing from the source.
 
 **Skip — and say so — when:**
 
@@ -463,12 +358,11 @@ Do not commit, push, or touch git state — the caller owns that.
 
 ## Phase 6 — Report
 
-Your final message **is** the return value: the caller relays it and never sees your tool calls, so
-everything that matters must be in it, and nothing that doesn't. Write it in the config's
-`output_language`. Findings are cited as `<repo>/<path>:<line>` so they stay unambiguous across repos.
+Write it in the config's `output_language`. Findings are cited as `<repo>/<path>:<line>` so they stay
+unambiguous across repos.
 
 ```
-review: <level> · scope <working|branch> · <repos> · angles <n> · agents <n> (deep <a> / light <b>)
+review: <level> · scope <working|branch> · <repos> · angles <n> · agents <n> (deep <a> / light <b>) · <m> min
 fixed <n> (P0 <a> · P1 <b> · P2 <c>) · skipped <m> · needs you <k>
 
 ## Fixed
@@ -483,6 +377,9 @@ fixed <n> (P0 <a> · P1 <b> · P2 <c>) · skipped <m> · needs you <k>
 ## Clean
 <repos where nothing survived verification>
 ```
+
+The elapsed minutes are in the header because this gate blocks the caller, and a run that took
+forty minutes on a sixty-line diff needs to be visible as such rather than discovered later.
 
 **Hard cap: 50 lines, one line per finding.** This is read in a chat window by someone who is about
 to commit; a wall of text gets skimmed, and that is how a P0 line goes unread.
@@ -516,11 +413,13 @@ python3 "${CLAUDE_PLUGIN_ROOT}/skills/feature/scripts/pr_feedback.py" \
 review up as unaddressed reviewer feedback and starts answering itself.
 
 ## Red flags — STOP, you're breaking the contract
+- Returning to the caller before the review is done → no. This is a gate; a gate that doesn't block isn't one, and the caller will commit without it.
 - Reviewing `git diff HEAD` alone → no. Committed-but-unpushed work and untracked files are part of the scope (Phase 0) and are where the newest code lives.
-- A finder or verifier that edited a file → no. They run on `feature:review-finder[-deep]`, which have no Edit/Write; if you fell back to `general-purpose`, Phase 4.5 is how you catch it.
-- Sending every agent to one subagent type → no. The type carries the tier; using `-deep` for retrieval angles roughly doubles the run for the same bugs (see the tier table).
-- Inlining the diffs into a dozen briefs instead of building the pack → no. That is the same diff paid for a dozen times, and the deep agents pay the most for it.
-- Running the per-iteration pass at `level` instead of `working_level` → no. The pre-merge pass is what covers that code at full depth; paying twice for it buys nothing.
+- Picking the worktree by "the one with a diff" → no. Resolve from cwd; an ambiguous scan is a question, not a guess.
+- Reading the angle files yourself → no. You hand out their paths; they cost their own context, not yours.
+- Sending every agent to one subagent type → no. The type carries the tier; using `-deep` for retrieval angles roughly doubles the run for the same bugs.
+- A candidate with no quoted evidence → no. Without it the verifier re-runs the whole search and costs more than the finder did.
+- Reverting someone else's edits because the tree changed mid-run → no. The finders cannot write; the tree belongs to whoever works in it. Re-read and re-check, never undo.
 - Multiplying the angle budget by the number of repos → no. The budget is for the whole run; the split rule is the only exception, and it has a hard cap of 16.
 - Finishing a run in which no verifier and no sweep agent ever ran → no. Fixes applied to unverified candidates aren't a review, they're an unreviewed rewrite.
 - Reporting a P0 instead of fixing it (when fixing is on) → no. The fix is the deliverable.
@@ -528,8 +427,5 @@ review up as unaddressed reviewer feedback and starts answering itself.
 - Refuting a candidate because it "depends on runtime state" → no. That's PLAUSIBLE; REFUTED needs a quoted line.
 - Running a build, typecheck or test suite to produce findings → no. CI owns that signal.
 - Flagging a CLAUDE.md or instructions violation without quoting the rule → no. Quote it or drop it.
-- Skipping the PR comment on a pre-merge run because no `--comment` was passed → no. Read `final_comment` yourself.
 - Posting the PR comment with `gh pr comment` → no. It must carry the marker (`pr_feedback.py reply --issue`).
-- A report longer than 50 lines with an empty **Needs you** → no. Roll up the P2s.
 - Committing, pushing or amending → no. The caller owns git.
-- Saying "reviewed" after one inline pass when the Agent tool was available → no. The fan-out is the method, not a detail.

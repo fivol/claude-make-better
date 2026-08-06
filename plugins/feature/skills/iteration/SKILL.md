@@ -142,7 +142,7 @@ follow-up (carry it into **Considerations**). Never omit the line when the list 
 
 ### 2c. Review — MANDATORY, and it is the last thing before the commit
 `/simplify` improves code you wrote and whose intent you know. This step is the opposite on purpose:
-an **impartial** pass over the same diff, by an agent that never saw this conversation and therefore
+an adversarial pass over the same diff, whose **finders never saw this conversation** and therefore
 cannot excuse anything. It hunts correctness bugs first, then reuse/simplification/efficiency/
 altitude/conventions, verifies each candidate before believing it, and **fixes what it finds**.
 
@@ -152,6 +152,11 @@ every code change of this iteration is on disk:
 ```
 /feature:review --scope working --root "$ROOT" --repos "<the repos you touched>"
 ```
+
+**Wait for it.** It is a gate, and it runs inline for exactly that reason: you do not commit, push,
+answer the user or end your turn while it is still running. A turn that once ended on the dispatch
+cost two full concurrent reviews of the same worktree and a push that landed before either of them
+reported. If your turn is about to end and the review has not reported, the review has not run.
 
 It reviews everything not yet in the PR — uncommitted work, commits made this iteration but not
 pushed, and new untracked files — across **all** the repos you touched, so run it **once** for the
