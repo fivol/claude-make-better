@@ -279,18 +279,25 @@ each one reads its own angle from its own file, reasoning runs on Opus while ret
 Sonnet, and verification is batched and judges the evidence the finder quoted rather than searching
 again. It runs again on the whole branch before the merge, where it is the only pass that ever sees
 the conflict resolutions — and because that pass re-reviews everything at full depth, the
-per-iteration one runs cheap by default. See
-**[the review gate](docs/feature/workflow.md#the-review-gate)**.
+per-iteration ones run cheap by default.
+
+All of it is yours to tune: **when** it fires (first iteration, later ones, pre-merge — each switched
+separately), **how hard**, **how many agents**, and **which angles** — including rewriting a built-in
+angle for one project or adding your own. See **[the review gate](docs/feature/review.md)**.
 
 ## Docs
 
+- **[The review gate](docs/feature/review.md)** — how the review works and how to tune it: the three
+  passes and their run policy, levels and budgets, agent caps, the thirteen angles, and writing your
+  own.
 - **[Workflow & the `iteration` skill](docs/feature/workflow.md)** — the phases, the per-iteration
   contract, the reusable **standalone** `iteration` skill, PR review feedback, and the considerations
   checklist.
 - **[Dashboard, URLs & commands](docs/feature/dashboard.md)** — the admin dashboard (`/feature-admin`),
   pretty `*.localhost` URLs, and the `/feature-doctor` preflight.
 - **[Configuration](docs/feature/configuration.md)** — full config schema: per-repo fields,
-  `instructions` + `INSTRUCTIONS.md`, `considerations`, proxy, reaper caps, env overrides.
+  `instructions` + `INSTRUCTIONS.md`, `considerations`, `code_review`, proxy, reaper caps, env
+  overrides.
 
 ## Requirements
 

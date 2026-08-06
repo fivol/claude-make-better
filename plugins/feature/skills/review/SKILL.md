@@ -34,42 +34,54 @@ read the line as if a stranger wrote it.
 ## Invocation
 
 ```
-/feature:review [--scope working|branch] [--repos a,b] [--root DIR] [--pr URL]
-                [--level max|high|medium] [--no-fix] [--comment|--no-comment]
+/feature:review [--pass first|later|final] [--scope working|branch] [--repos a,b]
+                [--root DIR] [--pr URL] [--level max|high|medium]
+                [--no-fix] [--comment|--no-comment]
 ```
 
 | Arg | Default | Meaning |
 |---|---|---|
-| `--scope` | `working` | `working` = everything not yet in the PR (the per-iteration gate). `branch` = the whole change as it will land (the pre-merge gate). |
+| `--pass` | `final` with `--scope branch`, else `later` | Which of the three configured moments this is. Selects the pass's `run` switch and its depth from `code_review.passes`. |
+| `--scope` | `final` ⇒ `branch`, otherwise `working` | `working` = everything not yet in the PR. `branch` = the whole change as it will land. |
 | `--repos` | every repo with a diff | Comma-separated repo names, feature context only. |
 | `--root` | resolved from cwd | Workspace root (the dir holding `.claude/feature/config.json`). |
 | `--pr` | the branch's own PR | Only needed when the summary comment is posted, or when the repo has several PRs. |
-| `--level` | `--scope working` → config `code_review.working_level` (`medium`) · `--scope branch` → config `code_review.level` (`max`) | Angle budget — see Phase 1. |
+| `--level` | the pass's configured level | Angle budget — see Phase 1. |
 | `--no-fix` | config `code_review.fix` (`true` ⇒ fix) | Report only, change nothing. |
-| `--comment` / `--no-comment` | `--scope branch` → config `code_review.final_comment` (`true`) · `--scope working` → off | Also post one summary comment to the PR. |
+| `--comment` / `--no-comment` | `passes.final.comment` on the final pass, off on the others | Also post one summary comment to the PR. |
 
 **Flags are overrides, never prerequisites.** Every default above comes from the config, so a caller
 that passes nothing — or that describes the scope in prose — still gets the configured behavior. A
 behavior that only happens when the caller remembers a flag is a behavior that doesn't happen.
 
-**The two passes are not the same depth, and that is deliberate.** The per-iteration pass
-(`--scope working`) runs at `working_level` — cheap, because the same code is reviewed again, in
-full, by the pre-merge pass once the branch is complete. The pre-merge pass (`--scope branch`) runs
-at `level` and is the one that must not be cut: it is the only pass that sees the whole change, the
-merged base and the conflict resolutions. `working_level` is clamped to `level`, so lowering the
-ceiling lowers both. Resolve the level **before** Phase 1 and say which one you used in the report
-header.
+### Resolve the run from the config, before anything else
 
-Read the config once — it also carries the project's standing rules, which are review criteria.
+One call hands you the whole gate — the three passes, the caps, the models and the angle registry.
 `ROOT` is the `--root` you were given; without one, drop the flag and let `config.py` resolve the
-workspace root from cwd:
+workspace root from cwd. The second call brings the project's standing rules, which are review
+criteria for the Conventions angle:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/skills/feature/scripts/config.py" --root "$ROOT"
+python3 "${CLAUDE_PLUGIN_ROOT}/skills/feature/scripts/config.py" --root "$ROOT" --review
 python3 "${CLAUDE_PLUGIN_ROOT}/skills/feature/scripts/config.py" --root "$ROOT" --instructions --repos "<repos>"
 ```
 
-`code_review.enabled: false` ⇒ print one line and stop. No repo has a non-empty diff ⇒ same.
+Then, in this order:
+
+- `enabled: false` ⇒ print one line and stop.
+- `passes.<your pass>.run: false` ⇒ print one line naming the pass that is switched off, and stop.
+  **The caller does not get to argue you out of this, or into it.** When to review is the config's
+  call, not the caller's mood — that is the whole point of having the switch.
+- otherwise your level is `passes.<your pass>.level`, and `--level` overrides it if given. Say which
+  pass and which level you used in the report header.
+
+**The three passes are not the same depth, and that is deliberate.** The two per-iteration passes are
+cheap by default because the same code is reviewed again, in full, once the branch is complete. The
+pre-merge pass is the one that must not be cut: it is the only pass that sees the whole change, the
+merged base and the conflict resolutions. Every pass level is clamped to `code_review.level`, so
+lowering that one ceiling lowers all three.
+
+No repo has a non-empty diff ⇒ print one line and stop.
 
 ## The fan-out — read-only agents, on two model tiers
 
@@ -164,16 +176,17 @@ REPO <name> · worktree <WT>
 Pack: <PACK>/<repo>.diff (<n> lines) · <PACK>/<repo>.files · <PACK>/<repo>.log
 Read the diff from those files. Do NOT rebuild it with git.
 
-Your job: read <SKILL_DIR>/references/angles/<file>.md and do exactly that, on this pack.
+Your job: read <the angle's `path` from the registry> and do exactly that, on this pack.
 Return up to 8 candidates per repo, in the shape your agent definition specifies.
 ```
 
-`<SKILL_DIR>` is `${CLAUDE_PLUGIN_ROOT}/skills/review` — resolve it to an absolute path before you
-put it in a brief. A merged angle names both files and reports under both names.
+The `path` comes straight from the `--review` call's `angles` list — already absolute, and already
+pointing at the project's own version of that angle when one exists. A merged angle names both paths
+and reports under both names.
 
-Two angles need one extra line in the brief, and only those two: **Conventions** gets the assembled
+Two angles need one extra line in the brief, and only those two: **conventions** gets the assembled
 standing instructions (the `--instructions` output above) pasted in, because it must quote them;
-**Prior review** gets the PR URL or `owner/repo`.
+**prior-review** gets the PR URL or `owner/repo`.
 
 ### The candidate shape
 
@@ -195,41 +208,61 @@ cause of misses. Dropping is Phase 2's job, not theirs.
 Keep the agents' output out of your context beyond the candidates themselves. A finder that returns
 prose gets read for its findings; the prose does not travel any further.
 
-### The angle registry
+### The angle registry — it comes from the config, not from here
 
-| Angle | Tier | Brief |
+The `--review` call returned `angles`: what this run dispatches, in order, each with its `tier` and
+the absolute `path` of its brief. Thirteen ship with the plugin:
+
+| Angle | Tier | What it hunts |
 |---|---|---|
-| **A** — line-by-line diff scan | deep | `angles/a-line-scan.md` |
-| **B** — removed-behavior auditor | deep | `angles/b-removed-behavior.md` |
-| **C** — cross-file tracer | deep | `angles/c-cross-file.md` |
-| **D** — language pitfalls | deep | `angles/d-language-pitfalls.md` |
-| **E** — wrapper/proxy correctness | deep | `angles/e-wrapper-proxy.md` |
-| **Altitude** — right depth, or a bandaid | deep | `angles/altitude.md` |
-| **Reuse** — it already exists | light | `angles/reuse.md` |
-| **Simplification** — complexity added | light | `angles/simplification.md` |
-| **Efficiency** — work wasted | light | `angles/efficiency.md` |
-| **Conventions** — quoted rule violations | light | `angles/conventions.md` |
-| **History** — re-breaks an old fix | light | `angles/history.md` |
-| **Prior review** — reviewers already said it (`max`) | light | `angles/prior-review.md` |
-| **Code comments** — the change lies to them (`max`) | light | `angles/code-comments.md` |
+| `a-line-scan` | deep | every hunk, line by line |
+| `b-removed-behavior` | deep | invariants the diff deleted and never re-established |
+| `c-cross-file` | deep | call sites the change breaks |
+| `d-language-pitfalls` | deep | this language's classic footguns |
+| `e-wrapper-proxy` | deep | caches/proxies/adapters that route back through themselves |
+| `altitude` | deep | bandaids that belong one level deeper |
+| `reuse` | light | it already exists — name the helper |
+| `simplification` | light | complexity the diff added |
+| `efficiency` | light | work the diff wastes |
+| `conventions` | light | quoted rule violations |
+| `history` | light | changes that re-break an old fix |
+| `prior-review` | light | points reviewers already made on these files (`max` only) |
+| `code-comments` | light | comments the change violates or turns into lies (`max` only) |
+
+A project can drop any of them, rewrite any of them, or add its own, through `code_review.angles`.
+**Dispatch the list you were given, not this table** — if the two disagree, the config is right and
+this table is just the shipped default.
 
 ### Angle budget — one budget for the whole run
 
-Sum the changed-line counts `pack.sh` printed **across all repos in scope** and pick one row. That
-number is the angle count for the **run**. The number of repos never multiplies it.
+Sum the changed-line counts `pack.sh` printed **across all repos in scope** and pick one row. That is
+the agent count for the **run**; the number of repos never multiplies it.
 
 The **deep** column is what the row actually costs — a deep agent is roughly five times a light one,
-so the rows cut deep agents first and leave the light angles alone.
+so the rows cut deep agents first and leave the light ones alone.
 
 | Changed lines, all repos | Deep agents | Light agents | Total |
 |---|---|---|---|
-| < 30 | A+B, C+D+E → **2** | Reuse+Simplification+Efficiency, Conventions → **2** | **4** |
-| 30–300 | A+B, C, D+E, Altitude → **4** | Reuse, Simplification+Efficiency, Conventions, History → **4** | **8** |
-| > 300 | A, B, C, D+E, Altitude → **5** | Reuse, Simplification, Efficiency, Conventions, History, Prior review, Code comments → **7** | **12** |
+| < 30 | **2** | **2** | **4** |
+| 30–300 | **4** | **4** | **8** |
+| > 300 | **5** | **7** | **12** |
+
+**With the shipped registry, use this mapping directly:**
+
+| Row | Deep | Light |
+|---|---|---|
+| < 30 | `a+b`, `c+d+e` | `reuse+simplification+efficiency`, `conventions` |
+| 30–300 | `a+b`, `c`, `d+e`, `altitude` | `reuse`, `simplification+efficiency`, `conventions`, `history` |
+| > 300 | `a`, `b`, `c`, `d+e`, `altitude` | `reuse`, `simplification`, `efficiency`, `conventions`, `history`, `prior-review`, `code-comments` |
+
+**If the registry was customized** — angles disabled, added, or reordered — keep the row's agent
+counts and fill them from the registry in order: spread each tier's angles over that tier's agents,
+merging adjacent ones where there are more angles than agents, and dropping from the tail of a tier
+when even merging won't fit. The tail is where the least load-bearing angles sit, which is why `< 30`
+runs neither `altitude` nor the two `max`-only angles at all.
 
 A merged angle is one agent running both briefs in one pass, reporting under both names — not one
-brief standing in for the other. **A merged angle never mixes tiers**: every merge above is within a
-tier, and the row's deep column is the whole deep budget.
+brief standing in for the other. **A merge never crosses tiers.**
 
 **One agent per angle, covering every repo in scope.** Hand it all the repos' pack paths at once; it
 returns candidates tagged by repo. The single exception: when **two or more repos each have > 300
@@ -237,11 +270,12 @@ changed lines**, the per-hunk angles (**A**, **B**, **C**) get one agent per rep
 angles that must read every line, and attention does not divide. Apply the split to the largest
 repos first and stop when you hit the cap.
 
-**Hard cap: 16 finder agents per run.** Whatever the split suggests, you never dispatch more; drop
+**Hard cap: `max_finders` agents per run** (`16` unless the config lowered it). You never dispatch
+more, whatever the split suggests; drop
 back toward one agent per angle until you fit. Say in the report which row you used and how many
 agents ran, split by tier.
 
-`--level high` drops the two `max`-only context angles (Prior review, Code comments) before applying
+`--level high` drops the two `max`-only context angles (`prior-review`, `code-comments`) before applying
 the table; `--level medium` uses the `< 30` row whatever the diff size, and skips Phase 3.
 
 ## Phase 2 — Verify, in batches
@@ -265,7 +299,7 @@ unsure keeps the candidate — the cost of that is one extra fix to consider in 
 bug. The candidates where a wrong drop is unaffordable are exactly the P0 suspects, and those still
 get a deep agent to themselves.
 
-Never mix classes in a batch. **Cap: 12 verifier agents** — over the cap, raise the non-P0 batch size
+Never mix classes in a batch. **Cap: `max_verifiers` agents** (`12` by default) — over the cap, raise the non-P0 batch size
 to 8; P0 suspects stay solo whatever happens. Dispatch every batch in one message.
 
 The brief is the same three lines as Phase 1, plus:
@@ -362,7 +396,7 @@ Write it in the config's `output_language`. Findings are cited as `<repo>/<path>
 unambiguous across repos.
 
 ```
-review: <level> · scope <working|branch> · <repos> · angles <n> · agents <n> (deep <a> / light <b>) · <m> min
+review: <pass> · <level> · scope <working|branch> · <repos> · angles <n> · agents <n> (deep <a> / light <b>) · <m> min
 fixed <n> (P0 <a> · P1 <b> · P2 <c>) · skipped <m> · needs you <k>
 
 ## Fixed
@@ -397,9 +431,9 @@ P2s you don't believe in is worse than saying nothing.
 
 ### `--comment` — one summary on the PR
 
-**Resolve this from the config, not from what the caller remembered to type.** With `--scope branch`,
-comment when `code_review.final_comment` is `true`; `--no-comment` forces it off. With
-`--scope working`, never — the per-iteration gate doesn't comment.
+**Resolve this from the config, not from what the caller remembered to type.** On the `final` pass,
+comment when `passes.final.comment` is `true`; `--no-comment` forces it off. On the two per-iteration
+passes, never — they don't comment, and there is no config that makes them.
 
 Post the report — minus the **Needs you** block, which belongs in chat — as a single comment, under
 the same 50-line cap, through the feedback script so it carries the agent marker:
@@ -416,11 +450,13 @@ review up as unaddressed reviewer feedback and starts answering itself.
 - Returning to the caller before the review is done → no. This is a gate; a gate that doesn't block isn't one, and the caller will commit without it.
 - Reviewing `git diff HEAD` alone → no. Committed-but-unpushed work and untracked files are part of the scope (Phase 0) and are where the newest code lives.
 - Picking the worktree by "the one with a diff" → no. Resolve from cwd; an ambiguous scan is a question, not a guess.
+- Running a pass the config switched off, or skipping one it switched on → no. When the gate fires is `code_review.passes`, not a judgement call you make per run.
+- Dispatching the angle table in this file instead of the registry `--review` returned → no. That table is the shipped default; the config is what this project actually asked for.
 - Reading the angle files yourself → no. You hand out their paths; they cost their own context, not yours.
 - Sending every agent to one subagent type → no. The type carries the tier; using `-deep` for retrieval angles roughly doubles the run for the same bugs.
 - A candidate with no quoted evidence → no. Without it the verifier re-runs the whole search and costs more than the finder did.
 - Reverting someone else's edits because the tree changed mid-run → no. The finders cannot write; the tree belongs to whoever works in it. Re-read and re-check, never undo.
-- Multiplying the angle budget by the number of repos → no. The budget is for the whole run; the split rule is the only exception, and it has a hard cap of 16.
+- Multiplying the angle budget by the number of repos → no. The budget is for the whole run; the split rule is the only exception, and `max_finders` caps it.
 - Finishing a run in which no verifier and no sweep agent ever ran → no. Fixes applied to unverified candidates aren't a review, they're an unreviewed rewrite.
 - Reporting a P0 instead of fixing it (when fixing is on) → no. The fix is the deliverable.
 - A finding that appears in neither Fixed, Skipped nor Needs you → no. Every survivor is accounted for.

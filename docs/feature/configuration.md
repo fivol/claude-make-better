@@ -127,24 +127,75 @@ later comment happened to be newer.
 
 ## `code_review`
 
-The review gate: an impartial pass that finds the change's own bugs and fixes them, run by the
-`iteration` skill before every commit and once more on the whole branch before the merge — see
-[the review gate](workflow.md#the-review-gate). On by default, at full depth.
+The review gate: an adversarial pass that finds the change's own bugs and fixes them, run at up to
+three moments — the first iteration, every later one, and once more on the whole branch before the
+merge. On by default. Full guide, with recipes and custom angles: **[the review gate](review.md)**.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `enabled` | `true` | Run the gate at all. `false` ⇒ both passes are skipped silently. |
-| `level` | `"max"` | Depth of the **pre-merge** pass, and the ceiling for the whole gate. Angle budget: `max` — 12 angles (5 deep), sweep pass, recall-biased; `high` — 10, sweep; `medium` — 4, no sweep. The budget is for the whole run, not per repo, and the diff's size collapses angles below this ceiling on its own — so neither a small change nor a second repo costs you a larger review. |
-| `working_level` | `"medium"` | Depth of the **per-iteration** pass. Cheaper on purpose: the pre-merge pass re-reviews the same code at `level`, on the integrated branch, before anything merges — so the per-iteration pass paying for full depth buys duplicated work, not coverage. Clamped to `level`, so lowering the ceiling lowers both. Raise it to `"max"` if you want every iteration reviewed as hard as the merge. |
+| `enabled` | `true` | Run the gate at all. `false` ⇒ every pass is skipped silently. |
+| `level` | `"max"` | **Ceiling for the whole gate.** Every pass's level is clamped to it, so lowering this one key lowers all three. Angle budget: `max` — up to 12 angles (5 deep), sweep pass, recall-biased; `high` — 10, sweep; `medium` — 4, no sweep. The budget is for the whole run, not per repo, and the diff's size collapses angles below this ceiling on its own — so neither a small change nor a second repo costs you a larger review. |
+| `passes` | see below | When the gate fires, and how hard, at each of the three moments. |
 | `fix` | `true` | Apply what the review finds. `false` ⇒ it only reports, and you get a findings list instead of a cleaned diff. |
-| `final_pass` | `true` | Run the whole-branch pass at finish, after the base is merged into the task branch — the only pass that sees the conflict resolutions and the interaction between iterations. |
-| `final_comment` | `true` | Post the final pass's summary to the PR as one comment (marked, so it never comes back as feedback). Read by the skill itself on the pre-merge pass — no flag to remember. |
+| `max_finders` | `16` | Hard cap on agents in the find phase. Over the cap the gate merges angles rather than dropping them silently. |
+| `max_verifiers` | `12` | Hard cap on agents in the verify phase. Over the cap batches grow; a suspected P0 still gets an agent to itself. |
+| `angles` | all 13 on | Which angles run, and where their briefs come from — see [angles](#code_reviewangles). |
 | `deep_agent_model` | `"opus"` | Model for the agents that have to *reason*: the correctness angles, altitude, the cross-repo pass, and the verification of every P0 suspect. |
 | `light_agent_model` | `"sonnet"` | Model for the agents that mostly *retrieve*: reuse, simplification, efficiency, conventions, git history, prior review comments, code comments, the sweep, and the verification of ordinary correctness and cleanup candidates. Set both to `"opus"` to run everything deep. |
 
 Each tier is also a subagent type that declares its own model (`review-finder-deep`,
 `review-finder`), so a dispatch that forgets the model still lands on the right tier instead of
 silently running retrieval work on Opus.
+
+### `code_review.passes`
+
+Three moments, each with its own on/off switch and its own depth. This is the run policy, and it
+belongs to the config: the agent does not get to decide per run whether a pass was worth it.
+
+| Pass | Fires | `run` | `level` |
+|---|---|---|---|
+| `first_iteration` | the iteration that opens the PR | `true` | `"medium"` |
+| `later_iterations` | every iteration after that | `true` | `"medium"` |
+| `final` | at finish, on the whole branch, after the base is merged in | `true` | `"max"` |
+
+`final` takes one extra key, `comment` (default `true`): post the pass's summary to the PR as one
+marked comment, so it never comes back as reviewer feedback.
+
+```json
+"code_review": {
+  "level": "max",
+  "passes": {
+    "first_iteration":  { "run": true,  "level": "max" },
+    "later_iterations": { "run": false },
+    "final":            { "run": true,  "level": "max", "comment": true }
+  }
+}
+```
+
+The per-iteration passes are cheap by default because `final` re-reviews all of that code at full
+depth before anything merges — the saving is in duplicated work, not in coverage. `final` is the one
+not to cut: it is the only pass that sees the conflict resolutions, and the only one that can catch
+iteration 5 breaking an assumption iteration 1 relied on.
+
+**Shorthand.** `working_level` (default `"medium"`) sets the level of both per-iteration passes at
+once; `final_pass` and `final_comment` are the older names for `passes.final.run` and
+`passes.final.comment`. All three still work, and are exactly the defaults `passes` falls back to —
+reach for `passes` when the first iteration should differ from the later ones, or when you want a
+pass off.
+
+### `code_review.angles`
+
+| Key | Default | Meaning |
+|---|---|---|
+| `disabled` | `[]` | Names of built-in angles to drop. |
+| `extra` | `[]` | Project-specific angles: `{"name": "a11y", "tier": "light"}`. Each needs a brief at `<root>/.claude/feature/review-angles/<name>.md`; a missing one is a hard error, not a silent skip. |
+
+A file at `<root>/.claude/feature/review-angles/<name>.md` named after a **built-in** shadows the
+shipped brief — that is how you rewrite an angle for one project without forking the plugin, and it
+needs no config entry.
+
+The thirteen built-ins, what each hunts, how to write your own, and what resolved for a given
+workspace: **[the review gate → angles](review.md#what-it-looks-for--angles)**.
 
 ## `instructions[]`
 

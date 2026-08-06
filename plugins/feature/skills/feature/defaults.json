@@ -20,8 +20,14 @@
     "fix": true,
     "final_pass": true,
     "final_comment": true,
+    "max_finders": 16,
+    "max_verifiers": 12,
     "deep_agent_model": "opus",
-    "light_agent_model": "sonnet"
+    "light_agent_model": "sonnet",
+    "angles": {
+      "disabled": [],
+      "extra": []
+    }
   },
   "proxy": {
     "enabled": true,

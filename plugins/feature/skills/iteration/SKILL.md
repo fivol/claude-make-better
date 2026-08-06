@@ -150,8 +150,14 @@ Invoke the `review` skill (a **real** Skill invocation, not a mention), after si
 every code change of this iteration is on disk:
 
 ```
-/feature:review --scope working --root "$ROOT" --repos "<the repos you touched>"
+/feature:review --pass <first|later> --root "$ROOT" --repos "<the repos you touched>"
 ```
+
+**`--pass first` when this iteration is opening the PR, `--pass later` on every one after it.** The
+`.feature.json` entry for the repo tells you which: no `pr` recorded yet ⇒ `first`. That distinction
+exists because the two are separately configurable — a project can review the first iteration deeply
+and the later ones cheaply, or skip the later ones entirely and let the pre-merge pass carry them.
+Getting the flag wrong silently applies the wrong policy, so read the state rather than guessing.
 
 **Wait for it.** It is a gate, and it runs inline for exactly that reason: you do not commit, push,
 answer the user or end your turn while it is still running. A turn that once ended on the dispatch
@@ -162,21 +168,16 @@ It reviews everything not yet in the PR — uncommitted work, commits made this 
 pushed, and new untracked files — across **all** the repos you touched, so run it **once** for the
 whole iteration, not once per repo. It never commits; its edits join this iteration's commit.
 
-Do not pass `--level`: at `--scope working` the skill resolves `code_review.working_level` (`medium`
-by default) itself. This pass is deliberately cheaper than the pre-merge one, which re-reviews the
-same code at full depth on the integrated branch — so the saving is in duplicated work, not in
-coverage.
-`code_review.enabled: false` ⇒ skip silently. `/feature:review` not installed ⇒ say so in one line and
-carry on; never fake it.
+**Do not pass `--level`, and do not decide for yourself whether to run it.** The skill reads
+`code_review.passes.<pass>` and applies that project's policy — including switching itself off and
+saying so. `code_review.enabled: false` ⇒ it skips silently. `/feature:review` not installed ⇒ say so
+in one line and carry on; never fake it.
 
 **This covers the whole iteration's work, not just the chat prompt.** Code you wrote for the user's
 request, code you wrote to satisfy a PR comment picked up in step 0.5, and anything you changed while
 answering a reviewer are all in the same diff and all get reviewed. Never exclude "it was only a
 review comment" from the gate — those changes are written under argument pressure and are exactly the
 ones that skip a step.
-
-**Significant ⇒ required. Minor ⇒ may skip** — the same split as step 2 (`/simplify`), and if you
-ran simplify you run review.
 
 The skill returns a compact report. **Do not paste it into the chat.** Take three things from it:
 

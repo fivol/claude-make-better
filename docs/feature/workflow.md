@@ -102,20 +102,22 @@ actually says. It hunts correctness bugs first, then reuse, simplification, effi
 convention violations, **verifies every candidate before believing it**, and fixes what survives. You
 get a cleaned diff, not a list of homework.
 
-It runs twice, with different scopes, and both are load-bearing:
+It can fire at three moments, each switched and sized on its own under
+[`code_review.passes`](configuration.md#code_reviewpasses):
 
-- **Before every commit**, over everything not yet in the PR — uncommitted work, commits made this
-  iteration but not pushed, and new untracked files, across every repo the iteration touched. It
-  covers the whole iteration's work: code written for your chat prompt and code written to satisfy a
+- **On the iteration that opens the PR** (`first_iteration`) and **on every one after it**
+  (`later_iterations`), over everything not yet in the PR — uncommitted work, commits made this
+  iteration but not pushed, and new untracked files, across every repo the iteration touched. Both
+  cover the whole iteration's work: code written for your chat prompt and code written to satisfy a
   PR comment are the same diff and get the same gate.
-- **Before the merge**, over the whole branch, right after the base has been merged into the task
-  branch. This pass is the only one that sees the **conflict resolutions** — hand-written code no one
-  has reviewed — and the only one that can catch iteration 5 breaking an assumption iteration 1
-  relied on. Its findings are fixed in the PR, before CI, and (by default) summarised in one PR
-  comment.
+- **Before the merge** (`final`), over the whole branch, right after the base has been merged into
+  the task branch. This pass is the only one that sees the **conflict resolutions** — hand-written
+  code no one has reviewed — and the only one that can catch iteration 5 breaking an assumption
+  iteration 1 relied on. Its findings are fixed in the PR, before CI, and (by default) summarised in
+  one PR comment.
 
-The scope is why the per-iteration pass stays cheap: each run only ever looks at what is new, so
-running it at full depth every time costs a review proportional to the change, not to the branch.
+The scope is why the per-iteration passes stay cheap: each run only ever looks at what is new, so the
+cost is proportional to the change, not to the branch.
 
 What keeps that promise honest:
 
@@ -154,10 +156,9 @@ What keeps that promise honest:
 The angle budget is for the **run**, not per repo: a second repo adds diff for the same agents to
 read, not a second set of agents.
 
-**The two passes are not the same depth.** The per-iteration gate runs at
-[`working_level`](configuration.md#code_review) (`medium`) and the pre-merge pass at `level`
-(`max`) — because the pre-merge pass re-reviews every line of the branch anyway, on the integrated
-code. Paying full depth on both is duplicated work, not extra coverage.
+**The three passes are not the same depth.** The per-iteration ones run at `medium` and the pre-merge
+pass at `max` — because the pre-merge pass re-reviews every line of the branch anyway, on the
+integrated code. Paying full depth on all three is duplicated work, not extra coverage.
 
 Three things come back into the chat, and nothing else — the report itself is capped at 50 lines so
 the one P0 line in it actually gets read:
@@ -168,7 +169,8 @@ the one P0 line in it actually gets read:
    these block it;
 3. nothing else. The fixes are in the diff, where you review them as code.
 
-Configure depth and both passes under [`code_review`](configuration.md#code_review).
+**Tuning it — when it runs, how hard, which angles, and how to add your own: [the review
+gate](review.md).** Key reference: [`code_review`](configuration.md#code_review).
 
 ## Self-improving considerations and instructions
 

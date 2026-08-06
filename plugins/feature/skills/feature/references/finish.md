@@ -45,8 +45,8 @@ confidently, **ask the user** before committing — never guess a conflict resol
 
 ## 2b. Final review — the whole branch, now that the base is in it
 
-Skip when `code_review.final_pass` is `false`. This runs **here** and nowhere else, and the position
-is the whole point:
+The skill skips itself when `code_review.passes.final.run` is `false` — you always invoke it. This
+runs **here** and nowhere else, and the position is the whole point:
 
 - the task branch now contains the **integrated** code — your feature plus the latest base — so this
   is the first and only moment anything can review what will actually land;
@@ -60,18 +60,18 @@ is the whole point:
 It also closes the gap the per-iteration gate structurally cannot: iteration 5 breaking an assumption
 iteration 1 relied on. Each iteration reviewed only its own diff; this one reviews the sum.
 
-**This is the deep pass.** The per-iteration gate runs at `code_review.working_level` (`medium` by
-default) precisely because this one re-reviews all of that code at `code_review.level` (`max`), on
-the integrated branch, before anything merges. Never trade this pass away to save a run — cutting it
-is what makes the cheap per-iteration passes unsafe.
+**This is the deep pass.** The per-iteration passes run cheap (`medium` by default) precisely because
+this one re-reviews all of that code at `code_review.level` (`max`), on the integrated branch, before
+anything merges. Never trade this pass away to save a run — cutting it is what makes the cheap
+per-iteration passes unsafe.
 
 ```
-/feature:review --scope branch --root "$ROOT" --repos "<all involved repos>"
+/feature:review --pass final --root "$ROOT" --repos "<all involved repos>"
 ```
 
-No flag for the PR comment: at `--scope branch` the skill reads `code_review.final_comment` itself
-and posts one summary comment per PR (through `pr_feedback.py`, so it carries the agent marker and
-never comes back as feedback). Pass `--no-comment` only to suppress it for this one run.
+No flag for the PR comment: on the `final` pass the skill reads `passes.final.comment` itself and
+posts one summary comment per PR (through `pr_feedback.py`, so it carries the agent marker and never
+comes back as feedback). Pass `--no-comment` only to suppress it for this one run.
 
 Then:
 
@@ -82,9 +82,9 @@ Then:
 - **P0 that was fixed** → say so explicitly when you report (step 10); the user is about to merge and
   deserves to know something real was caught at the gate.
 
-Describe the scope in prose if you like — the skill resolves repos and scope on its own — but pass
-`--scope branch`: it is the difference between reviewing the whole branch and reviewing the handful
-of lines that aren't pushed yet.
+Describe the scope in prose if you like — the skill resolves repos on its own — but pass
+`--pass final`: it selects both the branch scope and the deep level, and it is the difference between
+reviewing the whole branch and reviewing the handful of lines that aren't pushed yet.
 
 ## 3. Wait for the PR's CI to go green
 
