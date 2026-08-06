@@ -43,6 +43,7 @@ wholesale, so your `repos` list replaces the empty default).
   "code_review": {
     "enabled": true,
     "level": "max",
+    "working_level": "medium",
     "fix": true,
     "final_pass": true
   },
@@ -133,12 +134,17 @@ The review gate: an impartial pass that finds the change's own bugs and fixes th
 | Key | Default | Meaning |
 |---|---|---|
 | `enabled` | `true` | Run the gate at all. `false` ⇒ both passes are skipped silently. |
-| `level` | `"max"` | Angle budget: `max` — 13 angles, sweep pass, recall-biased; `high` — 11, sweep; `medium` — 4, no sweep. The budget is for the whole run, not per repo, and the diff's size collapses angles below this ceiling on its own — so neither a small change nor a second repo costs you a larger review. |
+| `level` | `"max"` | Depth of the **pre-merge** pass, and the ceiling for the whole gate. Angle budget: `max` — 12 angles (5 deep), sweep pass, recall-biased; `high` — 10, sweep; `medium` — 4, no sweep. The budget is for the whole run, not per repo, and the diff's size collapses angles below this ceiling on its own — so neither a small change nor a second repo costs you a larger review. |
+| `working_level` | `"medium"` | Depth of the **per-iteration** pass. Cheaper on purpose: the pre-merge pass re-reviews the same code at `level`, on the integrated branch, before anything merges — so the per-iteration pass paying for full depth buys duplicated work, not coverage. Clamped to `level`, so lowering the ceiling lowers both. Raise it to `"max"` if you want every iteration reviewed as hard as the merge. |
 | `fix` | `true` | Apply what the review finds. `false` ⇒ it only reports, and you get a findings list instead of a cleaned diff. |
 | `final_pass` | `true` | Run the whole-branch pass at finish, after the base is merged into the task branch — the only pass that sees the conflict resolutions and the interaction between iterations. |
 | `final_comment` | `true` | Post the final pass's summary to the PR as one comment (marked, so it never comes back as feedback). Read by the skill itself on the pre-merge pass — no flag to remember. |
-| `deep_agent_model` | `"opus"` | Model for the agents that have to *reason*: the correctness angles, altitude, the cross-repo pass, and the verification of every correctness candidate and every P0 suspect. |
-| `light_agent_model` | `"sonnet"` | Model for the agents that mostly *retrieve*: reuse, simplification, efficiency, conventions, git history, prior review comments, code comments, the sweep, and the verification of cleanup candidates. Set both to `"opus"` to run everything deep. |
+| `deep_agent_model` | `"opus"` | Model for the agents that have to *reason*: the correctness angles, altitude, the cross-repo pass, and the verification of every P0 suspect. |
+| `light_agent_model` | `"sonnet"` | Model for the agents that mostly *retrieve*: reuse, simplification, efficiency, conventions, git history, prior review comments, code comments, the sweep, and the verification of ordinary correctness and cleanup candidates. Set both to `"opus"` to run everything deep. |
+
+Each tier is also a subagent type that declares its own model (`review-finder-deep`,
+`review-finder`), so a dispatch that forgets the model still lands on the right tier instead of
+silently running retrieval work on Opus.
 
 ## `instructions[]`
 

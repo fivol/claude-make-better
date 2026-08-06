@@ -16,6 +16,7 @@
   "code_review": {
     "enabled": true,
     "level": "max",
+    "working_level": "medium",
     "fix": true,
     "final_pass": true,
     "final_comment": true,

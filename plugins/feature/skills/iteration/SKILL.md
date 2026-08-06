@@ -156,6 +156,11 @@ every code change of this iteration is on disk:
 It reviews everything not yet in the PR — uncommitted work, commits made this iteration but not
 pushed, and new untracked files — across **all** the repos you touched, so run it **once** for the
 whole iteration, not once per repo. It never commits; its edits join this iteration's commit.
+
+Do not pass `--level`: at `--scope working` the skill resolves `code_review.working_level` (`medium`
+by default) itself. This pass is deliberately cheaper than the pre-merge one, which re-reviews the
+same code at full depth on the integrated branch — so the saving is in duplicated work, not in
+coverage.
 `code_review.enabled: false` ⇒ skip silently. `/feature:review` not installed ⇒ say so in one line and
 carry on; never fake it.
 

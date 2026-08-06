@@ -277,7 +277,8 @@ only thing that reaches the chat is what the reviewer refused to decide alone. I
 cannot edit your code (no `Edit`, no `Write` — fixing happens once, at the end), reasoning runs on
 Opus while retrieval runs on Sonnet, and verification is batched so it actually runs. It runs again on
 the whole branch before the merge, where it is the only pass that ever sees the conflict resolutions —
-see **[the review gate](docs/feature/workflow.md#the-review-gate)**.
+and because that pass re-reviews everything at full depth, the per-iteration one runs cheap by
+default. See **[the review gate](docs/feature/workflow.md#the-review-gate)**.
 
 ## Docs
 

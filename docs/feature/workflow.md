@@ -120,14 +120,18 @@ running it at full depth every time costs a review proportional to the change, n
 Three things keep that promise honest inside the fork:
 
 - **The finders can't write.** Every agent that searches, verifies or sweeps runs as
-  `feature:review-finder`, a subagent shipped with the plugin that simply has no `Edit` and no
-  `Write`. An agent that "helpfully" fixes what it found would be writing unreviewed code into the
-  commit you are about to make — so the tools aren't there. Fixing happens once, at the end, in the
-  fork itself.
-- **Two model tiers.** Deciding whether a condition inverts on an empty list is reasoning; quoting a
-  rule out of a `CLAUDE.md` or reading `git blame` is retrieval. The first runs on
-  [`deep_agent_model`](configuration.md#code_review) (Opus), the second on `light_agent_model`
-  (Sonnet) — about half the cost of running everything deep, for the same bugs.
+  `feature:review-finder` or `feature:review-finder-deep`, subagents shipped with the plugin that
+  simply have no `Edit` and no `Write`. An agent that "helpfully" fixes what it found would be
+  writing unreviewed code into the commit you are about to make — so the tools aren't there. Fixing
+  happens once, at the end, in the fork itself.
+- **Two model tiers, carried by the subagent type.** Deciding whether a condition inverts on an
+  empty list is reasoning; quoting a rule out of a `CLAUDE.md` or reading `git blame` is retrieval.
+  The first runs on [`deep_agent_model`](configuration.md#code_review) (Opus), the second on
+  `light_agent_model` (Sonnet) — about half the cost of running everything deep, for the same bugs.
+  Each type declares its own model, so forgetting to pass one can't quietly put retrieval on Opus.
+- **One diff pack, read by everyone.** The fork writes each repo's diff, file inventory and commit
+  log to a temp dir once, and hands the finders paths. A dozen agents each rebuilding the same diff
+  is the same work paid for a dozen times.
 - **Verification is batched, not per-candidate.** Candidates are grouped by file, up to four to an
   agent, correctness apart from cleanup — except a suspected P0, which always gets an agent to
   itself on the deep tier. One agent per candidate is what makes the phase quietly not run at all,
@@ -135,6 +139,11 @@ Three things keep that promise honest inside the fork:
 
 The angle budget is for the **run**, not per repo: a second repo adds diff for the same agents to
 read, not a second set of agents.
+
+**The two passes are not the same depth.** The per-iteration gate runs at
+[`working_level`](configuration.md#code_review) (`medium`) and the pre-merge pass at `level`
+(`max`) — because the pre-merge pass re-reviews every line of the branch anyway, on the integrated
+code. Paying full depth on both is duplicated work, not extra coverage.
 
 Three things come back into the chat, and nothing else — the report itself stays in the fork, capped
 at 50 lines so the one P0 line in it actually gets read:

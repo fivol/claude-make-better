@@ -60,6 +60,11 @@ is the whole point:
 It also closes the gap the per-iteration gate structurally cannot: iteration 5 breaking an assumption
 iteration 1 relied on. Each iteration reviewed only its own diff; this one reviews the sum.
 
+**This is the deep pass.** The per-iteration gate runs at `code_review.working_level` (`medium` by
+default) precisely because this one re-reviews all of that code at `code_review.level` (`max`), on
+the integrated branch, before anything merges. Never trade this pass away to save a run — cutting it
+is what makes the cheap per-iteration passes unsafe.
+
 ```
 /feature:review --scope branch --root "$ROOT" --repos "<all involved repos>"
 ```
