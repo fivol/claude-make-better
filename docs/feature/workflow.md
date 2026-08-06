@@ -117,7 +117,27 @@ It runs twice, with different scopes, and both are load-bearing:
 The scope is why the per-iteration pass stays cheap: each run only ever looks at what is new, so
 running it at full depth every time costs a review proportional to the change, not to the branch.
 
-Three things come back into the chat, and nothing else — the report itself stays in the fork:
+Three things keep that promise honest inside the fork:
+
+- **The finders can't write.** Every agent that searches, verifies or sweeps runs as
+  `feature:review-finder`, a subagent shipped with the plugin that simply has no `Edit` and no
+  `Write`. An agent that "helpfully" fixes what it found would be writing unreviewed code into the
+  commit you are about to make — so the tools aren't there. Fixing happens once, at the end, in the
+  fork itself.
+- **Two model tiers.** Deciding whether a condition inverts on an empty list is reasoning; quoting a
+  rule out of a `CLAUDE.md` or reading `git blame` is retrieval. The first runs on
+  [`deep_agent_model`](configuration.md#code_review) (Opus), the second on `light_agent_model`
+  (Sonnet) — about half the cost of running everything deep, for the same bugs.
+- **Verification is batched, not per-candidate.** Candidates are grouped by file, up to four to an
+  agent, correctness apart from cleanup — except a suspected P0, which always gets an agent to
+  itself on the deep tier. One agent per candidate is what makes the phase quietly not run at all,
+  and fixes then land on findings nobody checked.
+
+The angle budget is for the **run**, not per repo: a second repo adds diff for the same agents to
+read, not a second set of agents.
+
+Three things come back into the chat, and nothing else — the report itself stays in the fork, capped
+at 50 lines so the one P0 line in it actually gets read:
 
 1. a status line, `review: ✓ max — fixed 4 (P0 1) · skipped 1`;
 2. **Needs you** — findings the reviewer refused to decide alone (two defensible fixes, or a fix that

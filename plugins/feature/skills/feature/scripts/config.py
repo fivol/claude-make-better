@@ -213,6 +213,8 @@ def code_review(cfg):
         "fix": p.get("fix", True),
         "final_pass": p.get("final_pass", True),
         "final_comment": p.get("final_comment", True),
+        "deep_agent_model": p.get("deep_agent_model", "opus"),
+        "light_agent_model": p.get("light_agent_model", "sonnet"),
     }
 
 
