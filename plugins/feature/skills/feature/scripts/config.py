@@ -40,6 +40,7 @@ import sys
 
 SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 SKILL_DIR = os.path.dirname(SCRIPTS_DIR)
+PLUGIN_ROOT = os.path.dirname(os.path.dirname(SKILL_DIR))   # <plugin>/skills/feature -> <plugin>
 DEFAULTS_PATH = os.path.join(SKILL_DIR, "defaults.json")
 
 CONFIG_RELPATH = os.path.join(".claude", "feature", "config.json")
@@ -206,31 +207,110 @@ def pr_feedback(cfg):
 
 LEVELS = ("medium", "high", "max")
 
+# The shipped review angles, in dispatch order. Each has a self-contained brief at
+# skills/review/references/angles/<name>.md, which the review skill hands to a
+# finder by path — it never reads them itself. The tier lives here rather than in
+# the brief for exactly that reason: choosing the tier must not cost a file read.
+BUILTIN_ANGLES = (
+    ("a-line-scan", "deep"),
+    ("b-removed-behavior", "deep"),
+    ("c-cross-file", "deep"),
+    ("d-language-pitfalls", "deep"),
+    ("e-wrapper-proxy", "deep"),
+    ("altitude", "deep"),
+    ("reuse", "light"),
+    ("simplification", "light"),
+    ("efficiency", "light"),
+    ("conventions", "light"),
+    ("history", "light"),
+    ("prior-review", "light"),
+    ("code-comments", "light"),
+)
+
+BUILTIN_ANGLES_DIR = os.path.join(PLUGIN_ROOT, "skills", "review", "references", "angles")
+USER_ANGLES_RELPATH = os.path.join(".claude", "feature", "review-angles")
+
+
+def _pass_spec(passes, key, run_default, level_default, ceiling):
+    """One entry of `code_review.passes`, clamped to the gate's ceiling."""
+    q = passes.get(key) or {}
+    lv = q.get("level", level_default)
+    if lv in LEVELS and ceiling in LEVELS:
+        lv = min(lv, ceiling, key=LEVELS.index)
+    return {"run": bool(q.get("run", run_default)), "level": lv}
+
 
 def code_review(cfg):
     """The `code_review` block: the review gate the `iteration` skill runs.
 
-    `level` is the depth of the pre-merge pass (`--scope branch`) and doubles as
-    the ceiling for the whole gate. `working_level` is the depth of the
-    per-iteration pass (`--scope working`) — cheaper by default, because the
-    pre-merge pass re-reviews the same code at full depth once the branch is
-    complete. It is clamped to `level` so lowering the ceiling lowers both.
+    `level` is the ceiling for the whole gate. Under `passes`, each of the three
+    moments the gate can fire — the first iteration, every later one, and the
+    pre-merge pass — carries its own `run` switch and its own depth, clamped to
+    that ceiling so lowering it lowers everything.
+
+    The legacy flat keys (`working_level`, `final_pass`, `final_comment`) are
+    still honoured as the defaults for the matching pass, and still returned, so
+    a config written against the old shape keeps its exact behavior.
     """
     p = cfg.get("code_review") or {}
     level = p.get("level", "max")
     working = p.get("working_level", "medium")
-    if level in LEVELS and working in LEVELS:
-        working = min(working, level, key=LEVELS.index)
+    passes = p.get("passes") or {}
+
+    first = _pass_spec(passes, "first_iteration", True, working, level)
+    later = _pass_spec(passes, "later_iterations", True, working, level)
+    final = _pass_spec(passes, "final", p.get("final_pass", True), level, level)
+    final["comment"] = bool(
+        (passes.get("final") or {}).get("comment", p.get("final_comment", True))
+    )
+
     return {
         "enabled": p.get("enabled", True),
         "level": level,
-        "working_level": working,
         "fix": p.get("fix", True),
-        "final_pass": p.get("final_pass", True),
-        "final_comment": p.get("final_comment", True),
+        "passes": {"first_iteration": first, "later_iterations": later, "final": final},
+        "max_finders": int(p.get("max_finders", 16)),
+        "max_verifiers": int(p.get("max_verifiers", 12)),
         "deep_agent_model": p.get("deep_agent_model", "opus"),
         "light_agent_model": p.get("light_agent_model", "sonnet"),
+        # Legacy aliases: same values, old names.
+        "working_level": later["level"],
+        "final_pass": final["run"],
+        "final_comment": final["comment"],
     }
+
+
+def review_angles(cfg):
+    """The resolved angle registry: what runs, on which tier, from which file.
+
+    A file at `<root>/.claude/feature/review-angles/<name>.md` shadows the shipped
+    brief of the same name, so a built-in angle can be rewritten for one project
+    without forking the plugin. `angles.disabled` drops built-ins; `angles.extra`
+    adds project-specific ones, each `{"name": ..., "tier": "deep"|"light"}`.
+    """
+    p = (cfg.get("code_review") or {}).get("angles") or {}
+    disabled = set(p.get("disabled") or [])
+    user_dir = os.path.join(cfg.get("_root") or "", USER_ANGLES_RELPATH)
+
+    def resolve(name, tier):
+        user = os.path.join(user_dir, f"{name}.md")
+        builtin = os.path.join(BUILTIN_ANGLES_DIR, f"{name}.md")
+        if os.path.isfile(user):
+            return {"name": name, "tier": tier, "path": user, "source": "user"}
+        if os.path.isfile(builtin):
+            return {"name": name, "tier": tier, "path": builtin, "source": "builtin"}
+        return {"name": name, "tier": tier, "path": None, "source": "MISSING"}
+
+    out = [resolve(n, t) for n, t in BUILTIN_ANGLES if n not in disabled]
+    seen = {a["name"] for a in out}
+    for extra in p.get("extra") or []:
+        name = (extra or {}).get("name")
+        if not name or name in seen or name in disabled:
+            continue
+        tier = extra.get("tier", "light")
+        out.append(resolve(name, tier if tier in ("deep", "light") else "light"))
+        seen.add(name)
+    return out
 
 
 def primary_frontend(cfg, present):
@@ -308,7 +388,24 @@ def main():
     want_instructions = "--instructions" in argv
     if want_instructions:
         argv.remove("--instructions")
+    want_review = "--review" in argv
+    if want_review:
+        argv.remove("--review")
     cfg = load(argv=argv)
+    if want_review:
+        # One call the review skill can make instead of assembling this itself:
+        # the resolved gate settings plus the angle registry it dispatches from.
+        out = dict(code_review(cfg))
+        out["angles"] = review_angles(cfg)
+        print(json.dumps(out, indent=2))
+        missing = [a["name"] for a in out["angles"] if a["source"] == "MISSING"]
+        if missing:
+            sys.exit(
+                f"config: no brief found for review angle(s) {missing}. Create "
+                f"{USER_ANGLES_RELPATH}/<name>.md under the workspace root, or drop the "
+                f"name from code_review.angles."
+            )
+        return
     if want_instructions:
         touched = [s.strip() for s in (repos_arg or "").split(",") if s.strip()]
         block = instructions(cfg, touched or None)

@@ -43,8 +43,16 @@ unbounded `grep -rn` across a repo can cost more than the rest of your run put t
   you found plus one line naming what you could not check. A partial answer inside the budget is
   worth more than a complete one at triple the cost — the caller has a verification step and a sweep
   agent behind you.
+- **A verification batch is tighter: about 8 calls, hard stop at 12.** You are judging evidence
+  someone else already gathered, not gathering it again. Out of budget with a verdict still open ⇒
+  PLAUSIBLE, plus one line on what you could not check. Verification that costs more than the search
+  that fed it is the failure mode this budget exists to stop.
 
 ## Stay inside your brief
+
+Your brief names a file — an angle, `verify.md`, `sweep.md` or `cross-repo.md`. **Read it first**: it
+is your actual job description, and everything above it in the brief is only the pack that job
+applies to. Never improvise a job from the diff.
 
 You are given one job. Do that one, at full depth, and nothing else:
 
@@ -61,11 +69,29 @@ You are given one job. Do that one, at full depth, and nothing else:
 
 Your final message **is** the return value. The caller parses it and never sees your tool calls.
 
-- Exactly the structure the prompt asked for — no preamble, no "I reviewed…", no closing summary,
-  no headings the prompt didn't ask for.
-- Every finding names a concrete **failure scenario**: the input, state, timing or platform that
-  makes the code wrong, and what goes wrong then. "This looks fragile" is not a finding.
-- Cite `repo/path:line` and quote the line you are talking about.
+When your job is **an angle or the sweep**, each candidate is one block in exactly this shape — no
+more fields, no fewer:
+
+```
+repo: <name> · file: <path> · line: <n>
+summary: <one line, what is wrong>
+failure_scenario: <the input/state/timing that makes it wrong, and what goes wrong then>
+evidence: <the lines you actually relied on, quoted, each with its path:line>
+class: correctness | cleanup
+p0: yes | no        # yes only for production breakage, data loss or a broken contract
+```
+
+When your job is a **verification batch**, return one numbered verdict per candidate, in order, and
+nothing else. When it is the **cross-repo pass**, each item names the gap and what would close it.
+
+Beyond the shape:
+
+- No preamble, no "I reviewed…", no closing summary, no headings the prompt didn't ask for. Those
+  blocks are the whole message.
+- `failure_scenario` is concrete or it is nothing — the input, state, timing or platform that makes
+  the code wrong, and what goes wrong then. "This looks fragile" is not a failure scenario.
+- `evidence` is **not optional**. It is what the verifier behind you judges from; a candidate without
+  it makes that verifier redo your entire search, which costs more than you did.
 - Found nothing? Return the empty result the prompt defines. Padding a thin pass with pedantic nits
   is worse than returning nothing — it buries the real findings and costs the caller a verification
   round on each one.
