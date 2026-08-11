@@ -9,7 +9,7 @@
 | Plugin | Install | What it does |
 |---|---|---|
 | [**make-better**](#make-better) | `/plugin install make-better@make-better` | Audit & improve your codebase on autopilot — one command, nine topics, fixes on a branch. |
-| [**feature**](#feature) | `/plugin install feature@make-better` | Build each feature/fix in an isolated git-worktree workspace — unique port, pretty URL, PR-per-iteration, live admin dashboard. |
+| [**feature**](#feature) | `/plugin install feature@make-better` | Build each task in an isolated git-worktree workspace, ship it through a review gate into a PR, then merge it — four composable skills, all config-driven. |
 
 ---
 
@@ -207,15 +207,26 @@ A reproduction (`/make-better` invocation, anonymized snippet of the system bein
 
 # feature
 
-> **Every feature/fix in its own isolated worktree — unique port, pretty URL, and a PR per iteration.**
+> **Four composable skills: give a task its own working copy, ship it through a review gate into a PR, work the reviewer's comments, merge it.**
 
 A [Claude Code](https://claude.com/claude-code) plugin that turns "build/fix X" into a disciplined,
-reviewable flow. Invoked once, it puts the agent into **Feature Mode** for the session: each change is
-built in an isolated `git worktree` (deps symlinked, never reinstalled), runs on its own stable port
-behind a pretty `http://<task>.localhost` URL, and lands in a PR — simplified, committed, and pushed
-**before** you ever see the summary. A live admin dashboard shows every workspace at a glance.
+reviewable flow. Each change is built in an isolated `git worktree` (deps symlinked, never
+reinstalled), optionally runs on its own stable port behind a pretty `http://<task>.localhost` URL,
+and lands in a PR — simplified, reviewed, committed and pushed **before** you ever see the report. A
+live admin dashboard shows every workspace at a glance.
 
-It's config-driven, so it works for any single- or multi-repo workspace.
+Config-driven, so it works for any single- or multi-repo workspace: **every policy is a key in
+`.claude/feature/config.json`**, and everything a human reads is a **template you shadow** — no fork.
+
+| Skill | Owns | Use it alone when |
+|---|---|---|
+| **`workspace`** | the environment: worktrees, dependency symlinks, copied env, ports, detached dev servers, proxy, reaper, dashboard state | you want an isolated running copy of the product for a task |
+| **`ship`** | delivery: `/simplify` → review gate → commit → push → PR → report | "ship it" / "commit this" / "open a PR" on any branch |
+| **`pr-feedback`** | the reviewer's comments: collect what's unaddressed, act on each, answer | "go through the PR comments" |
+| **`merge`** | landing: sync base in, final review, green CI, merge, tear down | "merge it" on a branch with an open PR |
+
+Only `workspace` enters a mode that persists for the session — and it stops the moment you say "no
+workspace, just edit here". The other three are ordinary skills you can call on a plain repo.
 
 ## Install
 
@@ -226,48 +237,49 @@ It's config-driven, so it works for any single- or multi-repo workspace.
 
 ## Quick start
 
-1. Create a config at your workspace root — `<workspace-root>/.claude/feature/config.json` — declaring
-   your repos:
+1. Create a config at your workspace root — `<workspace-root>/.claude/feature/config.json` —
+   declaring your repos:
 
    ```json
    {
      "repos": [
-       { "name": "web", "base_branch": "main", "port_band": 3000, "frontend": true,
-         "deps_symlink": ["node_modules"],
-         "dev_start": "node_modules/.bin/next dev -p {port}" }
+       { "name": "web", "base_branch": "main" }
      ]
    }
    ```
 
-   The workspace root is the folder holding your repo checkouts (each a sibling folder named after its
-   `name`); the config's presence marks that root. Add more repos for a multi-repo feature — full
-   schema (proxy, `instructions`, `considerations`, env-copy, reaper…) in
+   The workspace root is the folder holding your repo checkouts (each a sibling folder named after
+   its `name`); the config's presence marks that root. That is the whole minimum — it runs in `lite`
+   mode: worktree, ship, PR, nothing to install beyond `git` and `gh`.
+
+   Want the running app? Set `"mode": "full"` and give each repo a `port_band` and a `dev_start`, and
+   every pass hands you `http://<task>.localhost`. Full schema — gates, `instructions`,
+   `considerations`, env-copy, reaper, proxy — in
    **[configuration.md](docs/feature/configuration.md)**.
 
    Standing house rules go in `instructions` (an array of strings, workspace-wide or per repo) or in
-   `.claude/feature/INSTRUCTIONS.md` — free-form markdown that's injected into every iteration
-   whenever the file exists, so you never restate the same rule per request.
+   `.claude/feature/INSTRUCTIONS.md` — free-form markdown injected into every pass whenever the file
+   exists, so you never restate the same rule per request. What the *report* contains is separate:
+   drop a `.claude/feature/report.md` and it replaces the shipped default.
 
 2. Just ask for a feature — "let's add a dark-mode toggle", "fix the upload limit". The agent enters
-   Feature Mode, spins up the worktree(s) + server(s), and from then on every iteration is
-   committed/pushed into a PR automatically.
+   Workspace Mode, creates the worktree(s), and from then on every pass is reviewed, committed and
+   pushed into a PR automatically.
 
-3. When you're happy, say "done" / "merge it" — it syncs the base branch into the task branch (CI runs
-   on the integrated code), merges, and cleans everything up.
-
-> Add `--lite` for a no-server run (worktree + simplify + commit + push + PR, but no ports / dev
-> servers / pretty URLs) — handy for backend-only or docs changes.
+3. When you're happy, say "done" / "merge it" — the base branch is synced into the task branch (CI
+   runs on the integrated code), the whole branch gets a final review, then it merges and cleans up.
 
 ## How it works
 
-**Analyze** (preflight the toolchain, confirm scope) → **Init** (worktree, deps, port, detached dev
-server, proxy) → **Iterate** (the `iteration` skill: pick up PR comments → implement → `/simplify` →
-**review** → considerations → commit → push → PR → answer every comment → deep test links, every
-prompt) → **Finish** (sync base, **final review of the integrated branch**, green CI, merge, clean up).
+**Analyze** (preflight the toolchain, confirm scope) → **Init** (worktree, deps, and in full mode the
+port, detached dev server and proxy) → **Build + ship** (`ship`: pick up PR comments → you implement →
+`/simplify` → **review** → considerations → commit → push → PR → answer every comment → report with
+deep test links) → **Merge** (`merge`: sync base, **final review of the integrated branch**, green CI,
+merge per your strategy, clean up).
 
-Comments you leave on the PR are part of that loop: the agent picks up the unaddressed ones next
-iteration, does or argues with each, replies in the thread citing the fixing commit, and reports an
-honest verdict per comment in the summary — see
+Comments you leave on the PR are part of that loop: `pr-feedback` picks up the unaddressed ones on the
+next pass, does or argues with each, replies in the thread citing the fixing commit, and reports an
+honest verdict per comment — see
 **[PR review feedback](docs/feature/workflow.md#pr-review-feedback)**.
 
 Before anything is committed it goes through the **review gate** — a blocking pass whose finders
@@ -278,10 +290,10 @@ finders literally cannot edit your code (no `Edit`, no `Write` — fixing happen
 each one reads its own angle from its own file, reasoning runs on Opus while retrieval runs on
 Sonnet, and verification is batched and judges the evidence the finder quoted rather than searching
 again. It runs again on the whole branch before the merge, where it is the only pass that ever sees
-the conflict resolutions — and because that pass re-reviews everything at full depth, the
-per-iteration ones run cheap by default.
+the conflict resolutions — and because that pass re-reviews everything at full depth, the per-pass
+runs stay cheap by default.
 
-All of it is yours to tune: **when** it fires (first iteration, later ones, pre-merge — each switched
+All of it is yours to tune: **when** it fires (first pass, later ones, pre-merge — each switched
 separately), **how hard**, **how many agents**, and **which angles** — including rewriting a built-in
 angle for one project or adding your own. See **[the review gate](docs/feature/review.md)**.
 
@@ -290,20 +302,34 @@ angle for one project or adding your own. See **[the review gate](docs/feature/r
 - **[The review gate](docs/feature/review.md)** — how the review works and how to tune it: the three
   passes and their run policy, levels and budgets, agent caps, the thirteen angles, and writing your
   own.
-- **[Workflow & the `iteration` skill](docs/feature/workflow.md)** — the phases, the per-iteration
-  contract, the reusable **standalone** `iteration` skill, PR review feedback, and the considerations
-  checklist.
+- **[Workflow & the four skills](docs/feature/workflow.md)** — the phases, the delivery contract, the
+  standalone skills, PR review feedback, and the considerations checklist.
 - **[Dashboard, URLs & commands](docs/feature/dashboard.md)** — the admin dashboard (`/feature-admin`),
   pretty `*.localhost` URLs, and the `/feature-doctor` preflight.
-- **[Configuration](docs/feature/configuration.md)** — full config schema: per-repo fields,
-  `instructions` + `INSTRUCTIONS.md`, `considerations`, `code_review`, proxy, reaper caps, env
-  overrides.
+- **[Configuration](docs/feature/configuration.md)** — full config schema: `mode`, per-repo fields,
+  the `simplify` / `commit` / `pr` / `merge` / `code_review` / `pr_feedback` policies, `instructions`
+  + `INSTRUCTIONS.md`, `considerations`, the report templates, proxy, reaper caps, env overrides.
+
+## Upgrading to 1.0
+
+The skills were split and renamed, and policy moved into the config:
+
+| Before | Now |
+|---|---|
+| `feature:feature` | `feature:workspace` |
+| `feature:iteration` | `feature:ship` (PR comments → `feature:pr-feedback`, finish → `feature:merge`) |
+| `--lite` flag, full by default | `mode` in the config, **`lite` by default** — set `"mode": "full"` to keep ports/servers/URLs |
+| simplify/commit/PR/merge rules fixed in the skill | `simplify`, `commit`, `pr`, `merge` keys (defaults keep the old behaviour) |
+| report format written into the skill | `.claude/feature/report.md` / `summary.md` templates |
+
+`.claude/feature/config.json`, `.feature.json` and `/feature:review` are unchanged, so an existing
+workspace keeps working — add `"mode": "full"` if you were relying on dev servers.
 
 ## Requirements
 
 - Claude Code with plugin marketplace support
 - `git` (with `git worktree`), `gh` (GitHub CLI, authenticated — for PRs)
-- `python3` — used by the skill's scripts
+- `python3` — used by the plugin's scripts
 - macOS/Linux. Pretty URLs additionally need Caddy + Homebrew (optional)
 
 ## License

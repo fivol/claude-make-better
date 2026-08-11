@@ -13,9 +13,9 @@
     },
     {
       "name": "feature",
-      "description": "Build each feature/fix in an isolated git-worktree workspace: unique port, pretty *.localhost URL, detached dev servers, PR-per-iteration, and a live admin dashboard. Config-driven via .claude/feature/config.json. Includes the reusable `iteration` skill (pick up PR comments \u2192 simplify \u2192 review \u2192 commit \u2192 push \u2192 PR \u2192 considerations) and an impartial review gate that fixes what it finds.",
+      "description": "Give every task its own isolated working copy — git worktree per repo, optional unique port, detached dev servers, pretty *.localhost URLs, live admin dashboard. Four composable skills: `workspace` (isolation + servers), `ship` (simplify → review gate → commit → push → PR → report), `pr-feedback` (work the reviewer's comments), `merge` (integrate + clean up). Config-driven via .claude/feature/config.json.",
       "source": "./plugins/feature",
-      "version": "0.8.0"
+      "version": "1.0.0"
     }
   ]
 }

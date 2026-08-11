@@ -15,9 +15,9 @@ Easiest — the plugin command (starts it in the background and opens the browse
 Or run the script directly:
 
 ```bash
-python3 "${CLAUDE_SKILL_DIR}/scripts/admin.py" --open      # opens the browser
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/admin.py" --open      # opens the browser
 # or just:
-python3 "${CLAUDE_SKILL_DIR}/scripts/admin.py"             # serves on the configured admin_port (default 7878)
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/admin.py"             # serves on the configured admin_port (default 7878)
 ```
 
 On startup it prints **one** URL, picking whichever actually works:
@@ -63,7 +63,7 @@ auto-refreshes every ~7s, preserving the selection, scroll, and any open log.
 | server liveness | `kill -0 <dev_pid>` |
 | log tail | `<worktrees>/<task>/<repo>.dev.log` |
 | resume command | `.feature.json` `session_id`, else session history |
-| summary panel | `<worktrees>/<task>/summary.md` (written each iteration by the `iteration` skill) |
+| summary panel | `<worktrees>/<task>/summary.md` (written each pass by the `ship` skill) |
 | last agent message | last assistant text turn in the resumable session's `*.jsonl` |
 
 ## Actions (and the ones deliberately left manual)

@@ -1,13 +1,13 @@
 ---
-description: Preflight-check the Feature toolchain (git, gh, config, repos, Caddy) and fix/instruct
+description: Preflight-check the workspace toolchain (git, gh, config, repos, Caddy) and fix/instruct
 argument-hint: "[--root DIR] [--mode full|lite]"
 ---
 
-Run the Feature preflight doctor and act on it. It's read-only — it verifies everything the
-`feature` skill needs before building:
+Run the workspace preflight doctor and act on it. It's read-only — it verifies everything the
+`workspace` skill needs before building:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/skills/feature/scripts/doctor.py" $ARGUMENTS
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/doctor.py" $ARGUMENTS
 ```
 
 Then handle the results, splitting by the owner tag the doctor prints:

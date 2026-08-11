@@ -1,7 +1,7 @@
 # Pretty `*.localhost` URLs (Caddy reverse proxy)
 
 Lets you open `http://<task>.localhost/en/main` instead of `http://localhost:<port>`.
-**Full mode only** — `--lite` has no servers, so no proxy. The URL suffix is `proxy.domain_suffix`
+**Full mode only** — lite mode has no servers, so no proxy. The URL suffix is `proxy.domain_suffix`
 from config (default `localhost`); below assumes the default.
 
 ## How it works
@@ -21,7 +21,7 @@ pass without touching the repos. Chrome resolves `*.localhost` → `127.0.0.1` i
 ## One-time setup (user runs once, needs sudo once)
 
 ```bash
-"${CLAUDE_SKILL_DIR}/scripts/proxy-setup.sh"
+"${CLAUDE_PLUGIN_ROOT}/scripts/proxy-setup.sh"
 ```
 
 Installs caddy, makes the brew Caddyfile `import` the generated `<worktrees>/Caddyfile`, and starts
@@ -34,7 +34,7 @@ finds `.claude/feature/config.json`).
 Whenever ports change (init, finish), regenerate and hot-reload:
 
 ```bash
-python3 "${CLAUDE_SKILL_DIR}/scripts/caddyfile.py" --root "$ROOT" --reload
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/caddyfile.py" --root "$ROOT" --reload
 ```
 
 ## Gotchas

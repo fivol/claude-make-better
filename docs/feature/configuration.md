@@ -5,8 +5,15 @@ The `feature` plugin is driven by one per-project file, with one optional compan
 ```
 <workspace-root>/.claude/feature/
 ├── config.json         # required — defines the workspace and its repos
-└── INSTRUCTIONS.md     # optional — standing rules, injected whenever it exists
+├── INSTRUCTIONS.md     # optional — standing rules, injected whenever it exists
+├── report.md           # optional — what the chat report contains
+├── summary.md          # optional — what the dashboard card contains
+└── review-angles/      # optional — your own review angles, or rewrites of the built-in ones
 ```
+
+**Every policy the skills enforce is a key here**, with a shipped default — so you change behaviour in
+config rather than forking a skill. Anything a *human reads* is a **template** instead: a file you
+shadow, never prose you edit inside the plugin.
 
 `config.json`'s **presence defines the workspace root** — the folder that holds your repo checkouts (each as a
 sibling folder) and the `worktrees/` tree the skill creates. The scripts auto-resolve the root by
@@ -20,6 +27,7 @@ wholesale, so your `repos` list replaces the empty default).
 
 ```json
 {
+  "mode": "lite",
   "worktrees_dir": "worktrees",
   "max_live_servers": 5,
   "reap_sweep_age": 1800,
@@ -35,6 +43,12 @@ wholesale, so your `repos` list replaces the empty default).
       "repos": ["web"]
     }
   ],
+  "branch": { "prefix": "task-" },
+  "simplify": { "enabled": true, "when": "significant" },
+  "commit": { "per_pass": true, "message_language": "en" },
+  "pr": { "enabled": true, "one_per": "repo", "draft": false },
+  "merge": { "strategy": "merge", "via": "local-push", "wait_ci": true, "cleanup": true },
+  "report": { "chat_template": null, "summary_template": null },
   "pr_feedback": {
     "enabled": true,
     "reply": "always",
@@ -81,16 +95,83 @@ wholesale, so your `repos` list replaces the empty default).
 
 | Key | Default | Meaning |
 |---|---|---|
+| `mode` | `"lite"` | `lite` — worktree + ship + PR, nothing to install beyond git/`gh`. `full` — also a unique port, a detached dev server, FE→BE wiring and a pretty `http://<task>.<suffix>` URL each pass. A `--lite`/`--full` flag from you overrides it for one session; the agent never infers it. |
 | `worktrees_dir` | `"worktrees"` | Directory (under the root) for worktrees, the port registry, and the generated Caddyfile. |
 | `max_live_servers` | `5` | Reaper cap on concurrent dev servers; the oldest beyond this are stopped (worktree/PR kept). |
 | `reap_sweep_age` | `1800` | Min seconds between networked PR-state teardown sweeps (throttle). |
 | `output_language` | `"the user's language"` | Hint for the language of agent output and the persisted `summary.md`. |
-| `instructions` | `[]` | Standing rules every iteration must obey — **strictly an array of strings** (see below). |
-| `considerations` | `[]` | Cross-cutting dimensions the agent validates every iteration (see below). Empty ⇒ feature off. |
-| `pr_feedback` | see below | How the reviewer's PR comments are picked up and answered each iteration. On by default. |
+| `instructions` | `[]` | Standing rules every pass must obey — **strictly an array of strings** (see below). |
+| `considerations` | `[]` | Cross-cutting dimensions the agent validates every pass (see below). Empty ⇒ feature off. |
+| `branch` | `{"prefix": "task-"}` | Task-branch naming. `prefix` + the task slug, or a `template` with `{task}` for full control (`"feature/{task}"`). |
+| `simplify` | see below | The `/simplify` cleanup gate. |
+| `commit` | see below | Whether every pass commits, and the commit-message language. |
+| `pr` | see below | Pull-request policy. |
+| `merge` | see below | How a finished branch lands in its base. |
+| `report` | see below | Where the output templates live, when not in the default locations. |
+| `pr_feedback` | see below | How the reviewer's PR comments are picked up and answered each pass. On by default. |
 | `code_review` | see below | The impartial review gate run before every commit and before the merge. On by default, at full depth. |
 | `proxy` | see below | Pretty-URL / admin-dashboard settings. |
-| `repos` | `[]` | The repos the skill can build in. **Required** — the skill can't run with an empty list. |
+| `repos` | `[]` | The repos the skill can build in. **Required** for `workspace` — `ship`, `pr-feedback` and `merge` also run standalone on a plain repo with no config at all. |
+
+## `simplify`
+
+| Key | Default | Meaning |
+|---|---|---|
+| `enabled` | `true` | Run the `/simplify` gate on the files a pass changed. `false` ⇒ skipped silently, and nothing is reported. |
+| `when` | `"significant"` | `significant` — skip one-/few-line edits with no new logic (constants, copy, imports, version bumps, pure reverts); `always` — every pass; `never` — same as `enabled: false`. |
+
+The gate is quality-only: it must not change behavior, and its edits join the pass's commit. It needs
+the `/simplify` skill installed; without it the agent does the equivalent manual pass and says so.
+
+## `commit`
+
+| Key | Default | Meaning |
+|---|---|---|
+| `per_pass` | `true` | Every pass commits, minor edits included. `false` ⇒ the work is left uncommitted and the report says so — for a workflow where you commit yourself. |
+| `message_language` | `"en"` | Language of commit messages, independent of `output_language`. |
+
+## `pr`
+
+| Key | Default | Meaning |
+|---|---|---|
+| `enabled` | `true` | Open/update a PR at all. `false` ⇒ the branch is pushed and that's the end of the pass. |
+| `one_per` | `"repo"` | `repo` — one PR per repo per task (the norm for multi-repo tasks). `task` — the primary repo carries the PR and the others are named in its body. |
+| `draft` | `false` | Create PRs as drafts. |
+| `title_template` | — | Override the PR title. Placeholders: `{task}`, `{repo}`, `{base}`, `{branch}`. |
+| `body_template` | — | Override the PR body, same placeholders. |
+
+## `merge`
+
+| Key | Default | Meaning |
+|---|---|---|
+| `strategy` | `"merge"` | `merge` keeps the task SHAs, so pushing the base makes the host mark the PR merged by itself. `squash` / `rebase` rewrite them — required by repos with a squash-only policy, and then the host has to perform the merge. |
+| `via` | `"local-push"` | `local-push` — merge locally and push the base (only valid with `strategy: merge`; your local base ends up current). `gh` — `gh pr merge` does it. Forced to `gh` for `squash`/`rebase`. |
+| `wait_ci` | `true` | Wait for the PR's checks to go green before integrating. `false` for repos with no CI. |
+| `cleanup` | `true` | After the merge: stop dev servers, remove the worktree, delete local+remote branches, free the port and the proxy host. |
+
+Whatever the strategy, the base branch is always merged **into the task branch first**, with conflicts
+resolved there — so the PR shows exactly what will land and CI runs on it.
+
+## `report` — the output templates
+
+What the agent *writes for a human* is a template, not prose inside a skill. Two of them:
+
+| Template | Resolution order |
+|---|---|
+| the chat report | `report.chat_template` (path relative to the root) ▸ `.claude/feature/report.md` ▸ the plugin's default |
+| the dashboard `summary.md` | `report.summary_template` ▸ `.claude/feature/summary.md` ▸ the plugin's default |
+
+Drop a `report.md` next to your config and its blocks, order and status lines are what the agent
+writes — no fork, no per-request reminder. See what is in force with:
+
+```bash
+python3 "<plugin>/scripts/config.py" --root . --report [--kind summary]
+```
+
+Keep report rules **out** of `INSTRUCTIONS.md`: those are loaded before the code is written and
+weighted as constraints on the code, and by the time a long pass writes its report they are tens of
+thousands of tokens away. The template is loaded at the moment the report is written, which is the
+only time it is worth reading.
 
 ## `proxy`
 
@@ -103,7 +184,7 @@ wholesale, so your `repos` list replaces the empty default).
 
 ## `pr_feedback`
 
-Comments left on the PR are picked up as work items at the start of every iteration and answered after
+Comments left on the PR are picked up as work items at the start of every pass and answered after
 the push — see [PR review feedback](workflow.md#pr-review-feedback) for what the agent does with each
 one. Nothing needs configuring: the defaults below are what ships.
 
@@ -117,7 +198,7 @@ one. Nothing needs configuring: the defaults below are what ships.
 | `marker` | `"<!-- feature:reply -->"` | Invisible tag the agent appends to its own replies — the only way to tell them apart, since `gh` posts under your account. Change it and previously answered threads resurface once. |
 
 The agent's own PR comments count as feedback when they lack the marker — so any review write-up
-posted to the PR by something else gets picked up and addressed on the next iteration, exactly like a
+posted to the PR by something else gets picked up and addressed on the next pass, exactly like a
 human comment.
 
 A review body or a general PR comment has no thread to reply into, so the agent's answer names what
@@ -128,7 +209,7 @@ later comment happened to be newer.
 ## `code_review`
 
 The review gate: an adversarial pass that finds the change's own bugs and fixes them, run at up to
-three moments — the first iteration, every later one, and once more on the whole branch before the
+three moments — the first pass, every later one, and once more on the whole branch before the
 merge. On by default. Full guide, with recipes and custom angles: **[the review gate](review.md)**.
 
 | Key | Default | Meaning |
@@ -154,8 +235,8 @@ belongs to the config: the agent does not get to decide per run whether a pass w
 
 | Pass | Fires | `run` | `level` |
 |---|---|---|---|
-| `first_iteration` | the iteration that opens the PR | `true` | `"medium"` |
-| `later_iterations` | every iteration after that | `true` | `"medium"` |
+| `first_iteration` | the pass that opens the PR | `true` | `"medium"` |
+| `later_iterations` | every pass after that | `true` | `"medium"` |
 | `final` | at finish, on the whole branch, after the base is merged in | `true` | `"max"` |
 
 `final` takes one extra key, `comment` (default `true`): post the pass's summary to the PR as one
@@ -172,15 +253,15 @@ marked comment, so it never comes back as reviewer feedback.
 }
 ```
 
-The per-iteration passes are cheap by default because `final` re-reviews all of that code at full
+The per-pass runs are cheap by default because `final` re-reviews all of that code at full
 depth before anything merges — the saving is in duplicated work, not in coverage. `final` is the one
 not to cut: it is the only pass that sees the conflict resolutions, and the only one that can catch
-iteration 5 breaking an assumption iteration 1 relied on.
+pass 5 breaking an assumption pass 1 relied on.
 
-**Shorthand.** `working_level` (default `"medium"`) sets the level of both per-iteration passes at
+**Shorthand.** `working_level` (default `"medium"`) sets the level of both per-pass runs at
 once; `final_pass` and `final_comment` are the older names for `passes.final.run` and
 `passes.final.comment`. All three still work, and are exactly the defaults `passes` falls back to —
-reach for `passes` when the first iteration should differ from the later ones, or when you want a
+reach for `passes` when the first pass should differ from the later ones, or when you want a
 pass off.
 
 ### `code_review.angles`
@@ -199,11 +280,11 @@ workspace: **[the review gate → angles](review.md#what-it-looks-for--angles)**
 
 ## `instructions[]`
 
-**Standing rules** the agent follows on every iteration — the project-wide equivalent of a
+**Standing rules** the agent follows on every pass — the project-wide equivalent of a
 `CLAUDE.md`, scoped to feature work. Declare a rule once and it holds for every task in the
 workspace, without you restating it per request.
 
-Three sources, all optional, all applied **whenever present** — the `iteration` skill assembles them
+Three sources, all optional, all applied **whenever present** — the `ship` skill assembles them
 in its step 0, before any code is written:
 
 | Source | Shape | Use it for |
@@ -221,7 +302,7 @@ injected**. Delete it to stop applying it.
 |---|---|---|
 | What it is | a rule you follow | a check you re-run |
 | When it applies | while writing the code | after the change, before commit |
-| Reported back | never | every iteration: `considerations: mobile ✓ · rtl n/a · …` |
+| Reported back | never | every pass: `considerations: mobile ✓ · rtl n/a · …` |
 | Example | "no `any` in TS" | "does this work on mobile?" |
 
 Rule of thumb: if the answer is always the same and you'd never want it reported, it's an
@@ -251,20 +332,20 @@ when none are configured.
 
 ## `considerations[]`
 
-A checklist of **cross-cutting dimensions** the agent must validate on every iteration, before
-commit (the `iteration` skill's contract, step 2b). These are the recurring blind spots —
+A checklist of **cross-cutting dimensions** the agent must validate on every pass, before
+commit (the `ship` skill's contract, step 1b). These are the recurring blind spots —
 things a feature gets specified *without* (desktop-only, LTR-only, Chrome-only, happy-path-only) and
 that then ship broken. Declaring them once here means the agent reports an explicit
-`considerations: mobile ✓ · rtl n/a · …` line every iteration and can't silently forget them.
+`considerations: mobile ✓ · rtl n/a · …` line every pass and can't silently forget them.
 
 | Field | Required | Meaning |
 |---|---|---|
 | `name` | ✅ | Short label shown in the summary line (e.g. `mobile`, `rtl`, `cross-browser`, `a11y`). |
 | `check` | ✅ | What to actually verify — phrased as an imperative the agent can act on, not just a topic. |
-| `when` | — | Free-text applicability condition (e.g. "any UI/style change"). The agent decides per iteration; omit ⇒ always considered applicable. |
-| `repos` | — | Restrict applicability to iterations that touch one of these repos (e.g. only frontends). Omit ⇒ any repo. |
+| `when` | — | Free-text applicability condition (e.g. "any UI/style change"). The agent decides per pass; omit ⇒ always considered applicable. |
+| `repos` | — | Restrict applicability to passes that touch one of these repos (e.g. only frontends). Omit ⇒ any repo. |
 
-Each iteration the agent marks every applicable entry `✓` (verified), `n/a` (not applicable), or `⚠`
+Each pass the agent marks every applicable entry `✓` (verified), `n/a` (not applicable), or `⚠`
 (applicable but unverified / needs follow-up). It's also a **self-improving** list: after `finish`,
 the agent reviews the session and may propose new entries drawn from what bit this task — added only
 with your approval (see `references/finish.md` §11).
@@ -296,7 +377,7 @@ A repo's **checkout folder name must equal its `name`**, located directly under 
 | `frontend` | — | `true` ⇒ this repo owns the bare `http://<task>.<suffix>` alias. The first `frontend: true` repo present in a task wins; others get `http://<repo>.<task>.<suffix>`. |
 | `deps_symlink` | — | Directories symlinked from the main checkout into the worktree (e.g. `node_modules`, `venv`). Never list build caches (`.next`, `build`, `.turbo`) — those must be per-worktree. |
 | `env_copy` | — | `.env*` files copied (not symlinked) into the worktree, so per-workspace overrides (port, FE→BE URL) don't mutate the main checkout. |
-| `instructions` | — | Standing rules (array of strings) applied only on iterations that touch this repo — see [`instructions[]`](#instructions). |
+| `instructions` | — | Standing rules (array of strings) applied only on passes that touch this repo — see [`instructions[]`](#instructions). |
 | `dev_start` | full mode | Dev-server command, run with the worktree as the working directory. `{port}` is substituted with the allocated port. Tokenized with shell-style splitting (no shell), so env-prefixed vars must go through `env` — e.g. `env PORT={port} BROWSER=none npm start`. |
 
 ### `dev_start` examples

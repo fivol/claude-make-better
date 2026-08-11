@@ -1,22 +1,38 @@
-# Phase 3 — Finish (sync base into task, local merge into base + push + full cleanup)
+---
+name: merge
+description: Land a finished task branch in its base branch — sync the base into the branch and resolve conflicts there, run the final review on the integrated code, wait for green CI, merge, then tear the workspace down (servers, worktree, branches, ports, proxy). Use ONLY on an explicit user go-ahead ("done", "merge it", "финиш", "мержим") — never infer it from work looking finished. Runs standalone on any branch with an open PR, and is the last phase of the `workspace` skill.
+---
 
-Runs **only** on an explicit user go-ahead ("done", "finish", "merge it", or the equivalent in the
-user's language). Confirm once before merging. Read `<worktrees>/<task>/.feature.json` for the repos,
-base branches, ports, PIDs, and PR links. Do every step for **all** involved repos.
+# Merge — integrate the task branch, then clean up
 
-**Strategy:** first bring the latest base into the task branch **inside the worktree, and resolve any
-conflicts there — on the task branch itself**. That lands the integration in the **PR** (so it's
-reviewable and CI runs on the exact code that will merge), and makes the final step trivial. Then
-merge the now-up-to-date task branch into the main checkout's base branch **locally** and push.
-Pushing the task commits into the base makes the host mark the PR **Merged** automatically — no
-`gh pr merge` — and leaves your local base already updated. Do **not** squash/rebase: that rewrites
-SHAs and the host would not detect the merge (the PR would show Closed, not Merged). We use `merge`
-precisely to keep the SHAs intact.
+Runs **only** on an explicit user go-ahead ("done", "finish", "merge it", or the
+equivalent in the user's language). Confirm once before merging. In workspace
+context read `<worktrees>/<task>/.feature.json` for the repos, base branches,
+ports, PIDs and PR links, and do every step for **all** involved repos;
+standalone, the current repo and its branch's PR are the whole job (steps 7–9
+are then no-ops).
 
-Per repo: `WT="$ROOT/<worktrees>/<task>/<repo>"`, branch `task-<task>`, `BASE` = `.feature.json`
-`.repos.<repo>.base` (the repo's `base_branch`). `ROOT` = the workspace root — anchor it as in
-`workspace.md` (walk up to the `.claude/feature/config.json` marker), never `$(pwd)`.
-`SCRIPTS="${CLAUDE_SKILL_DIR}/scripts"`.
+**Strategy** — read it from the config, don't assume:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/config.py" --root "$ROOT"   # → .merge
+```
+
+| `merge.strategy` | `merge.via` | What happens |
+|---|---|---|
+| `merge` (default) | `local-push` | Merge the task branch into `BASE` locally and push. The task SHAs land in `BASE`, so the host marks the PR **Merged** by itself and your local base is already up to date. |
+| `merge` | `gh` | Same commit shape, but the host performs it (`gh pr merge --merge`); pull `BASE` afterwards. |
+| `squash` / `rebase` | `gh` (forced) | The host rewrites the SHAs (`gh pr merge --squash\|--rebase`). Required by repos with a squash-only policy. Steps 5–6 below are replaced by that single call, and the local base is refreshed with `git pull --ff-only`. |
+
+Whatever the strategy, **step 2 is not optional**: the integration happens on the
+task branch, in its worktree, so the PR shows exactly what will land and CI runs
+on it. `merge.wait_ci: false` skips step 3; `merge.cleanup: false` stops after
+step 6.
+
+Per repo: `WT="$ROOT/<worktrees>/<task>/<repo>"`, `BRANCH` = the task branch,
+`BASE` = `.feature.json` `.repos.<repo>.base` (the repo's `base_branch`).
+`ROOT` = the workspace root — anchor it via the `.claude/feature/config.json`
+marker, never `$(pwd)`. `SCRIPTS="${CLAUDE_PLUGIN_ROOT}/scripts"`.
 
 ## 1. Make sure the task branch is fully committed
 
@@ -34,7 +50,7 @@ git -C "$WT" fetch origin "$BASE"
 if git -C "$WT" merge-base --is-ancestor "origin/$BASE" HEAD; then
   echo "task already up to date with $BASE — nothing to sync"
 else
-  git -C "$WT" merge --no-ff "origin/$BASE" -m "Merge $BASE into task-<task>"
+  git -C "$WT" merge --no-ff "origin/$BASE" -m "Merge $BASE into $BRANCH"
 fi
 git -C "$WT" push                 # updates the PR; its head SHA is what we'll merge
 ```
@@ -53,17 +69,17 @@ runs **here** and nowhere else, and the position is the whole point:
 - **conflict resolutions from step 2 are hand-written code that no one has reviewed.** They are
   written under pressure, in the least familiar part of the diff, and they are a classic source of
   silently dropped changes — a resolution that keeps "ours" and quietly discards a fix the base
-  branch added. Per-iteration reviews never saw them, because they didn't exist yet;
+  branch added. Per-pass reviews never saw them, because they didn't exist yet;
 - fixes still land **in the PR**, before CI runs on it (step 3). After step 6 the merge is done and
   any fix needs a new PR — which is why this is not a post-merge step.
 
-It also closes the gap the per-iteration gate structurally cannot: iteration 5 breaking an assumption
-iteration 1 relied on. Each iteration reviewed only its own diff; this one reviews the sum.
+It also closes the gap the per-pass gate structurally cannot: pass 5 breaking an assumption pass 1
+relied on. Each pass reviewed only its own diff; this one reviews the sum.
 
-**This is the deep pass.** The per-iteration passes run cheap (`medium` by default) precisely because
+**This is the deep pass.** The per-pass runs are cheap (`medium` by default) precisely because
 this one re-reviews all of that code at `code_review.level` (`max`), on the integrated branch, before
 anything merges. Never trade this pass away to save a run — cutting it is what makes the cheap
-per-iteration passes unsafe.
+per-pass runs unsafe.
 
 ```
 /feature:review --pass final --root "$ROOT" --repos "<all involved repos>"
@@ -114,11 +130,20 @@ git -C "$ROOT/<repo>" pull --ff-only origin "$BASE"                     # latest
 Because the task branch already contains the latest `BASE` (step 2), this merge carries no conflicts.
 
 ```bash
-git -C "$ROOT/<repo>" merge --no-ff "task-<task>" -m "Merge task-<task> into $BASE"
+git -C "$ROOT/<repo>" merge --no-ff "$BRANCH" -m "Merge $BRANCH into $BASE"
 ```
 
 If git *does* report a conflict here, `BASE` moved again between step 2 and now — go back to **step 2**
 (re-sync the task branch, push, wait for CI), then retry. Never guess a resolution on the `BASE` side.
+
+**`via: gh` or a rewriting strategy** replaces steps 4–6 with one call, then a refresh:
+
+```bash
+( cd "$WT" && gh pr merge "$PR" --merge|--squash|--rebase )   # per merge.strategy
+git -C "$ROOT/<repo>" checkout "$BASE" && git -C "$ROOT/<repo>" pull --ff-only origin "$BASE"
+```
+
+Skip to step 7 afterwards — the PR is already Merged and the local base is current.
 
 ## 6. Push — this *is* the PR merge
 
@@ -137,7 +162,7 @@ worktree HEAD == the PR head before continuing.
 
 ## 7. Stop the dev servers
 
-**Skip in `--lite` mode.** Servers were started detached via `serve.py`, so `dev_pid` is also the
+**Full mode only** (`mode: lite` ⇒ no servers were started). Servers were started detached via `serve.py`, so `dev_pid` is also the
 process-group id — kill the whole group to catch worker children:
 
 ```bash
@@ -149,8 +174,8 @@ kill -0 <dev_pid> 2>/dev/null && kill -9 -- -<dev_pid>   # SIGKILL any straggler
 
 ```bash
 git -C "$ROOT/<repo>" worktree remove --force "$WT"
-git -C "$ROOT/<repo>" branch -d "task-<task>"            # -d is safe (already merged); use -D only if it refuses
-git -C "$ROOT/<repo>" push origin --delete "task-<task>" # tolerate "remote ref does not exist"
+git -C "$ROOT/<repo>" branch -d "$BRANCH"            # -d is safe (already merged); use -D only if it refuses
+git -C "$ROOT/<repo>" push origin --delete "$BRANCH" # tolerate "remote ref does not exist"
 git -C "$ROOT/<repo>" worktree prune
 ```
 
@@ -191,8 +216,8 @@ automatically next time.
   two strong candidates beat a long speculative list. If nothing qualifies, say so and add nothing.
 - **Only on the user's approval**, append the approved entries to the matching array in
   `.claude/feature/config.json` (read it, add, write it back — don't touch anything else). From the
-  next feature on, the `iteration` skill picks them up automatically: considerations are validated in
-  step 2b, instructions are loaded in step 0.
+  next feature on, the `ship` skill picks them up automatically: considerations are validated in
+  its step 1b, instructions are loaded in its step 0.
 
-This step never blocks finish — the merge/cleanup above is already complete. It's a quick "should we
+This step never blocks the merge — the merge/cleanup above is already complete. It's a quick "should we
 teach the checklist something?" at the very end.

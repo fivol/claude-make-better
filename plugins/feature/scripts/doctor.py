@@ -208,7 +208,9 @@ def render(cfg, mode, results):
 
 def main():
     args = sys.argv[1:]
-    mode = "full"
+    # None ⇒ take the project's `mode` from the config; --mode overrides it for
+    # this run, the way the user's --lite/--full flag overrides it for a session.
+    mode = None
     if "--mode" in args:
         i = args.index("--mode")
         try:
@@ -223,6 +225,8 @@ def main():
         args.remove("--json")
     try:
         cfg = config.load(argv=args)
+        if mode is None:
+            mode = config.mode(cfg)
         results = collect(cfg, mode)
     except SystemExit:
         raise

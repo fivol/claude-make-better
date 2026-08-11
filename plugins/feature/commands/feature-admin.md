@@ -1,9 +1,9 @@
 ---
-description: Open the Feature admin dashboard — one live view of all feature workspaces
+description: Open the admin dashboard — one live view of all task workspaces
 argument-hint: "[--port N] [--root DIR]"
 ---
 
-Launch the **Feature admin dashboard**: a single live view of every feature workspace
+Launch the **admin dashboard**: a single live view of every task workspace
 (repos, PRs + CI, dev-server health & logs, per-task summary, and a copy-able
 `claude --resume` command). It is read-only over the skill's state plus start / stop / reap
 buttons — merging stays chat-driven.
@@ -13,7 +13,7 @@ Run it **in the background** (`run_in_background: true`) so the server outlives 
 `.claude/feature/config.json`; the script self-anchors, or pass `--root DIR`):
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/skills/feature/scripts/admin.py" --open $ARGUMENTS
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/admin.py" --open $ARGUMENTS
 ```
 
 Then tell the user the single dashboard URL the script printed on its first line and stop. The

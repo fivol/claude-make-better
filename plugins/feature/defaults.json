@@ -1,10 +1,37 @@
 {
+  "mode": "lite",
   "worktrees_dir": "worktrees",
   "max_live_servers": 5,
   "reap_sweep_age": 1800,
   "output_language": "the user's language",
   "instructions": [],
   "considerations": [],
+  "branch": {
+    "prefix": "task-"
+  },
+  "simplify": {
+    "enabled": true,
+    "when": "significant"
+  },
+  "commit": {
+    "per_pass": true,
+    "message_language": "en"
+  },
+  "pr": {
+    "enabled": true,
+    "one_per": "repo",
+    "draft": false
+  },
+  "merge": {
+    "strategy": "merge",
+    "via": "local-push",
+    "wait_ci": true,
+    "cleanup": true
+  },
+  "report": {
+    "chat_template": null,
+    "summary_template": null
+  },
   "pr_feedback": {
     "enabled": true,
     "reply": "always",

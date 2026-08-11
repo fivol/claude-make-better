@@ -46,8 +46,8 @@ The gate can fire at three moments, and each is switched and sized independently
 
 | Pass | When | Default |
 |---|---|---|
-| `first_iteration` | the iteration that opens the PR | on, `medium` |
-| `later_iterations` | every iteration after that | on, `medium` |
+| `first_iteration` | the pass that opens the PR | on, `medium` |
+| `later_iterations` | every pass after that | on, `medium` |
 | `final` | at finish, on the whole branch, after the base is merged in | on, `max`, posts a PR comment |
 
 ```json
@@ -60,18 +60,18 @@ The gate can fire at three moments, and each is switched and sized independently
 }
 ```
 
-The per-iteration passes are cheap on purpose: the `final` pass re-reviews all of that code at full
+The per-pass runs are cheap on purpose: the `final` pass re-reviews all of that code at full
 depth, on the integrated branch, before anything merges. **The `final` pass is the one not to cut.**
 It is the only pass that ever sees the conflict resolutions — hand-written code, written under
-pressure, that no per-iteration review could have seen because it didn't exist yet — and the only one
-that can catch iteration 5 breaking an assumption iteration 1 relied on.
+pressure, that no per-pass review could have seen because it didn't exist yet — and the only one
+that can catch pass 5 breaking an assumption pass 1 relied on.
 
 The switch is the config's, not the agent's. `run: false` and the skill stops with one line saying
 which pass is off; the caller cannot argue it into running, and cannot argue it out.
 
-> **Shorthand.** `working_level` sets the level of both per-iteration passes at once, and
+> **Shorthand.** `working_level` sets the level of both per-pass runs at once, and
 > `final_pass` / `final_comment` are the older names for `passes.final.run` / `.comment`. They still
-> work and are still the defaults that `passes` falls back to — use `passes` when the first iteration
+> work and are still the defaults that `passes` falls back to — use `passes` when the first pass
 > should differ from the later ones, or when you want one pass off.
 
 ---
@@ -85,7 +85,7 @@ key lowers all three passes.
 |---|---|---|---|
 | `max` | up to 12 (5 deep) | yes | the pre-merge pass; anything about to merge |
 | `high` | up to 10 | yes | same, minus the two PR-history angles |
-| `medium` | 4 | no | per-iteration passes; fast feedback on work that gets reviewed again later |
+| `medium` | 4 | no | per-pass runs; fast feedback on work that gets reviewed again later |
 
 The diff's own size collapses the budget below the ceiling on its own, so a small change never costs
 a large review:
@@ -200,7 +200,7 @@ every angle with its tier, its resolved path and whether that path is `builtin` 
 Roughly in order of effect:
 
 1. **`passes.later_iterations.run: false`** — the biggest single saving on a long task. The `final`
-   pass still covers everything those iterations wrote.
+   pass still covers everything those passes wrote.
 2. **`level`** — the ceiling. `high` drops the two PR-history angles; `medium` pins every pass to the
    4-agent row and skips the sweep.
 3. **`light_agent_model`** — most agents are light-tier. Setting both models to `"opus"` roughly
@@ -213,8 +213,8 @@ Roughly in order of effect:
 | You want | Set |
 |---|---|
 | Review only at the end | `passes.first_iteration.run: false`, `passes.later_iterations.run: false` |
-| Hard look at the first iteration, cheap after | `passes.first_iteration.level: "max"`, `later_iterations.level: "medium"` |
-| Every iteration reviewed as hard as the merge | `passes.first_iteration.level: "max"`, `later_iterations.level: "max"` |
+| Hard look at the first pass, cheap after | `passes.first_iteration.level: "max"`, `later_iterations.level: "medium"` |
+| Every pass reviewed as hard as the merge | `passes.first_iteration.level: "max"`, `later_iterations.level: "max"` |
 | Findings but no edits | `fix: false` |
 | No PR comment at finish | `passes.final.comment: false` |
 | Gate off entirely | `enabled: false` |
@@ -232,4 +232,4 @@ It never commits, pushes or amends — the caller owns git.
 ## See also
 
 - **[Configuration reference](configuration.md#code_review)** — every key, with defaults.
-- **[The iteration workflow](workflow.md)** — where the three passes sit in the loop.
+- **[The workflow](workflow.md)** — the four skills, and where the three passes sit in the flow.

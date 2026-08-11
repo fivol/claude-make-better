@@ -6,7 +6,7 @@ then anchor `ROOT` to the **workspace root** — the folder that contains `.clau
 
 ```bash
 ROOT="$(d=$PWD; while [ "$d" != / ] && [ ! -f "$d/.claude/feature/config.json" ]; do d=$(dirname "$d"); done; echo "$d")"
-SCRIPTS="${CLAUDE_SKILL_DIR}/scripts"
+SCRIPTS="${CLAUDE_PLUGIN_ROOT}/scripts"
 ```
 
 (`ports.py`/`caddyfile.py`/`reap.py`/`admin.py` also self-resolve the root from the config marker, so
@@ -22,7 +22,7 @@ declaring the repos involved (you can add more later). Schema:
   "worktrees_dir": "worktrees",
   "max_live_servers": 5,
   "reap_sweep_age": 1800,
-  "instructions": ["<standing rule every iteration must obey>"],
+  "instructions": ["<standing rule every pass must obey>"],
   "considerations": [
     { "name": "mobile", "when": "any UI/markup/style change in a frontend repo",
       "check": "Verify the mobile viewport is adapted (responsive, tap targets, no horizontal scroll, popups fit).",
@@ -39,10 +39,10 @@ declaring the repos involved (you can add more later). Schema:
 ```
 
 `considerations` (optional) is a checklist of cross-cutting dimensions the agent validates every
-iteration — see `iterate.md` §2b and the [configuration doc](../../../../docs/feature/configuration.md).
+pass — see the `ship` skill (its step 1b) and the [configuration doc](../../../../../docs/feature/configuration.md).
 Leave it out / empty to disable.
 
-`instructions` (optional) is an array of **standing rules** every iteration must obey — constraints,
+`instructions` (optional) is an array of **standing rules** every pass must obey — constraints,
 not a checklist, so they're never reported per item. `repos[].instructions` scopes rules to one repo,
 and `<ROOT>/.claude/feature/INSTRUCTIONS.md` (free-form markdown) is injected verbatim whenever it
 exists. Don't invent entries at init — write only rules the user actually stated.
@@ -64,9 +64,9 @@ Pick a short kebab-case `<task>` slug describing the change (e.g. `upload-limit-
 involved repos. **One feature may span several repos** — repeat every step below for each.
 
 > If `<worktrees>/<task>/.feature.json` already exists, do NOT recreate anything — read it and resume
-> (re-run the iteration). Init is one-time.
+> (re-run the pass). Init is one-time.
 
-> **Mode:** in `--lite` mode skip steps 4–6 (port, FE→BE wiring, dev server) entirely. Steps 1–3 and 7
+> **Mode:** in lite mode skip steps 4–6 (port, FE→BE wiring, dev server) entirely. Steps 1–3 and 7
 > run in both modes.
 
 > **If an `Edit`/`Write` is blocked with "this background session hasn't isolated its changes yet —
@@ -190,7 +190,7 @@ python3 "$SCRIPTS/serve.py" wait --log "$WT/<repo>.dev.log" --timeout 180
 # exit 0 = ready · 1 = timeout · 2 = compile/start failure (prints the log tail)
 ```
 
-Then write `$PID` into `.feature.json` `.repos.<repo>.dev_pid`. If a later iteration finds the server
+Then write `$PID` into `.feature.json` `.repos.<repo>.dev_pid`. If a later pass finds the server
 dead (`dev_pid` cleared by reap, or `kill -0 <dev_pid>` fails), restart it exactly the same way. (For
 any other wait-for-a-condition need, use the `Monitor` tool with an until-loop — not `sleep`.)
 
@@ -205,7 +205,7 @@ python3 "$SCRIPTS/caddyfile.py" --root "$ROOT" --reload
 
 Give the user the pretty URL (`http://<task>.<suffix>/…`) as the primary one; keep `localhost:<port>`
 in state as the fallback. **This is the moment Caddy setup surfaces** — it's lazy: nothing about Caddy
-is needed until this first full-mode reload (`--lite` never touches it). If Caddy isn't ready,
+is needed until this first full-mode reload (lite mode never touches it). If Caddy isn't ready,
 `--reload` prints the exact one-time `proxy-setup.sh` command (installs Caddy + starts it on `:80`,
 sudo once) — relay that command to the user verbatim and use `localhost:<port>` until they've run it.
 The agent can't do this step itself (needs sudo / a privileged `:80` bind); everything after (per-task
@@ -213,7 +213,7 @@ reloads) is automatic and sudo-free.
 
 ## 7. Write workspace state
 
-Save `<worktrees>/<task>/.feature.json` so later iterations and finish are reliable even after context
+Save `<worktrees>/<task>/.feature.json` so later passes and the merge are reliable even after context
 is summarized:
 
 ```json
@@ -236,13 +236,13 @@ is summarized:
 ```
 
 Update `pr` once the PR is created (Phase 2), and `dev_pid` whenever you (re)start a server.
-In `--lite` mode set `mode: "lite"` and leave `port`, `url`, `dev_pid` as `null`.
+In lite mode set `mode: "lite"` and leave `port`, `url`, `dev_pid` as `null`.
 
 **Stamp `session_id` here, at creation** — read `$CLAUDE_CODE_SESSION_ID` (`echo` it in Bash; write
 `null` only if it is genuinely empty). It is what the admin dashboard's "continue chat" resumes, and
-the `iteration` skill only refreshes it at its step 5 — so a task that is created and then worked on
+the `ship` skill only refreshes it at its report step — so a task that is created and then worked on
 elsewhere, or that never reaches step 5, has an unusable dashboard entry until it does. Writing it
-once here costs nothing and makes the entry work from iteration zero.
+once here costs nothing and makes the entry work from pass zero.
 
-After init completes, immediately proceed to the **first iteration** — reap, then the `iteration`
-skill (`iterate.md`).
+After init completes, immediately proceed to the **first pass** — reap, then the `ship`
+skill.

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Shared config loader for the `feature` skill scripts.
+"""Shared config loader for every skill in this plugin.
 
-The skill operates on a *workspace root* — the directory that holds the
+The skills operate on a *workspace root* — the directory that holds the
 checkouts you build in (one or more git repos as sibling folders) plus the
 `worktrees/` tree the skill creates. That root is NOT necessarily a git repo
 itself (it is often a plain parent folder containing several repos), so we
@@ -18,12 +18,17 @@ Resolution order for the root (first hit wins):
     5. CWD
 
 Config resolution:
-    - <skill-dir>/defaults.json                  (built-in defaults, shipped)
+    - <plugin>/defaults.json                     (built-in defaults, shipped)
     - <root>/.claude/feature/config.json         (per-project override)
   are deep-merged (override wins; lists are replaced wholesale, so a user
   `repos` list replaces the empty default).
 
-Standing instructions (rules every iteration must follow) come from two places,
+Every policy the skills enforce is a key here with a shipped default, so a
+project changes it in config rather than forking a skill. Anything a human
+reads — the chat report, the dashboard summary — is a *template* instead,
+shipped in the skill and shadowed by a file under `.claude/feature/`.
+
+Standing instructions (rules every pass must follow) come from two places,
 both optional and both always applied when present:
     - <root>/.claude/feature/INSTRUCTIONS.md     (free-form markdown)
     - config `instructions` / `repos[].instructions`  (arrays of strings)
@@ -32,6 +37,9 @@ This module is import-safe (no side effects) and also runnable:
     config.py [--root DIR]                        # merged config as JSON
     config.py [--root DIR] --instructions [--repos a,b]
                                                   # assembled instructions block
+    config.py [--root DIR] --review               # review gate + angle registry
+    config.py [--root DIR] --report [--kind chat|summary]
+                                                  # the resolved output template
 """
 import json
 import os
@@ -39,9 +47,8 @@ import subprocess
 import sys
 
 SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
-SKILL_DIR = os.path.dirname(SCRIPTS_DIR)
-PLUGIN_ROOT = os.path.dirname(os.path.dirname(SKILL_DIR))   # <plugin>/skills/feature -> <plugin>
-DEFAULTS_PATH = os.path.join(SKILL_DIR, "defaults.json")
+PLUGIN_ROOT = os.path.dirname(SCRIPTS_DIR)                  # <plugin>/scripts -> <plugin>
+DEFAULTS_PATH = os.path.join(PLUGIN_ROOT, "defaults.json")
 
 CONFIG_RELPATH = os.path.join(".claude", "feature", "config.json")
 INSTRUCTIONS_RELPATH = os.path.join(".claude", "feature", "INSTRUCTIONS.md")
@@ -190,6 +197,123 @@ def proxy(cfg):
         "admin_host": p.get("admin_host", "admin.localhost"),
         "admin_port": int(p.get("admin_port", 7878)),
     }
+
+
+def mode(cfg):
+    """`full` (ports, dev servers, pretty URLs) or `lite` (worktree + PR only).
+
+    Shipped default is `lite`: it needs nothing but git and `gh`. Full mode is
+    the richer setup — it wants a dev-start command per repo and, for pretty
+    URLs, Caddy — so a project opts into it rather than tripping over it.
+    """
+    m = str(cfg.get("mode", "lite")).strip().lower()
+    return m if m in ("lite", "full") else "lite"
+
+
+def branch(cfg):
+    """How a task branch is named. `template` wins; `{task}` is the slug."""
+    b = cfg.get("branch") or {}
+    template = b.get("template") or (b.get("prefix", "task-") + "{task}")
+    return {"prefix": b.get("prefix", "task-"), "template": template}
+
+
+def branch_name(cfg, task):
+    return branch(cfg)["template"].replace("{task}", task)
+
+
+def simplify(cfg):
+    """The `/simplify` gate: whether it runs, and after which changes.
+
+    `when`: `significant` (skip one-line/no-logic edits) · `always` · `never`
+    (same as `enabled: false`, kept so a project can say it explicitly).
+    """
+    s = cfg.get("simplify") or {}
+    when = str(s.get("when", "significant")).strip().lower()
+    if when not in ("significant", "always", "never"):
+        when = "significant"
+    return {"enabled": bool(s.get("enabled", True)) and when != "never", "when": when}
+
+
+def commit(cfg):
+    """Commit policy: whether every pass commits, and the message language."""
+    c = cfg.get("commit") or {}
+    return {
+        "per_pass": bool(c.get("per_pass", c.get("per_iteration", True))),
+        "message_language": c.get("message_language", "en"),
+    }
+
+
+def pr(cfg):
+    """Pull-request policy. `enabled: false` ⇒ push the branch and stop."""
+    p = cfg.get("pr") or {}
+    one_per = str(p.get("one_per", "repo")).strip().lower()
+    return {
+        "enabled": bool(p.get("enabled", True)),
+        "one_per": one_per if one_per in ("repo", "task") else "repo",
+        "draft": bool(p.get("draft", False)),
+        "title_template": p.get("title_template"),
+        "body_template": p.get("body_template"),
+    }
+
+
+def merge(cfg):
+    """How a finished task lands in its base branch.
+
+    `strategy`: `merge` keeps the task SHAs, so pushing the base makes the host
+    mark the PR merged by itself · `squash` / `rebase` rewrite them, which the
+    host cannot match — those go through `gh pr merge`, which is why `via`
+    follows `strategy` unless a project pins it.
+    """
+    m = cfg.get("merge") or {}
+    strategy = str(m.get("strategy", "merge")).strip().lower()
+    if strategy not in ("merge", "squash", "rebase"):
+        strategy = "merge"
+    via = str(m.get("via") or ("local-push" if strategy == "merge" else "gh")).lower()
+    if strategy != "merge":
+        via = "gh"
+    return {
+        "strategy": strategy,
+        "via": via if via in ("local-push", "gh") else "local-push",
+        "wait_ci": bool(m.get("wait_ci", True)),
+        "cleanup": bool(m.get("cleanup", True)),
+    }
+
+
+REPORT_KINDS = {
+    # kind -> (config key, shipped template, user override under .claude/feature/)
+    "chat": ("chat_template", os.path.join("skills", "ship", "templates", "report.md"),
+             "report.md"),
+    "summary": ("summary_template", os.path.join("skills", "ship", "templates", "summary.md"),
+                "summary.md"),
+}
+
+
+def report_template(cfg, kind="chat"):
+    """Resolve one output template: which file, and its text.
+
+    Precedence: the config's explicit path (relative to the root) ▸
+    `<root>/.claude/feature/<kind>.md` ▸ the template shipped with the skill.
+    Presentation is the one thing every project wants differently, and the one
+    thing no skill should hardcode — so it is a file you shadow, not prose you
+    fork. Returned at the moment the report is written, never earlier: a format
+    read before the work is a format forgotten by the time it is needed.
+    """
+    key, shipped, user_rel = REPORT_KINDS[kind]
+    root = cfg.get("_root") or ""
+    candidates = []
+    configured = (cfg.get("report") or {}).get(key)
+    if configured:
+        candidates.append(("config", os.path.join(root, configured)))
+    candidates.append(("user", os.path.join(root, ".claude", "feature", user_rel)))
+    candidates.append(("builtin", os.path.join(PLUGIN_ROOT, shipped)))
+    for source, path in candidates:
+        if os.path.isfile(path):
+            try:
+                with open(path) as f:
+                    return {"kind": kind, "source": source, "path": path, "text": f.read()}
+            except OSError as e:
+                sys.exit(f"config: cannot read {path}: {e}")
+    return {"kind": kind, "source": "MISSING", "path": None, "text": ""}
 
 
 def pr_feedback(cfg):
@@ -391,7 +515,20 @@ def main():
     want_review = "--review" in argv
     if want_review:
         argv.remove("--review")
+    want_report = "--report" in argv
+    if want_report:
+        argv.remove("--report")
+    kind_arg = take_value_arg(argv, "--kind") or "chat"
     cfg = load(argv=argv)
+    if want_report:
+        if kind_arg not in REPORT_KINDS:
+            sys.exit(f"config: --kind must be one of {sorted(REPORT_KINDS)}")
+        t = report_template(cfg, kind_arg)
+        if t["source"] == "MISSING":
+            sys.exit(f"config: no {kind_arg} template found (plugin install is incomplete)")
+        print(f"=== OUTPUT TEMPLATE ({t['kind']}, {t['source']}: {t['path']}) ===\n")
+        print(t["text"])
+        return
     if want_review:
         # One call the review skill can make instead of assembling this itself:
         # the resolved gate settings plus the angle registry it dispatches from.

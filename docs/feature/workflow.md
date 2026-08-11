@@ -1,20 +1,30 @@
-# feature — workflow & the `iteration` skill
+# feature — the four skills and how a change flows through them
 
-How Feature Mode drives a change from request to merged PR. For the config that powers it, see
+How a request becomes a merged PR. For the config that powers it, see
 [configuration.md](configuration.md); for the dashboard, pretty URLs, and commands, see
 [dashboard.md](dashboard.md).
 
-## Feature Mode
+## Four skills, one flow
 
-Invoked once, the `feature` skill puts the agent into **Feature Mode** for the rest of the session —
-you don't re-invoke it per step; the conversation itself drives the phases. Each feature/fix is built
-in an isolated `git worktree` under `<worktrees>/<task>/`, on its own stable port, and lands in its
-base branch via a PR. The core contract: by the time you see a summary, the change is already
-simplified, committed, pushed, and reflected in the PR — the summary is the *last* thing produced,
-never the first.
+| Skill | Owns | Use it alone when |
+|---|---|---|
+| **`workspace`** | the environment: worktree per repo, dependency symlinks, copied env, ports, detached dev servers, proxy, reaper, dashboard state | you want an isolated running copy of the product for a task |
+| **`ship`** | delivery: simplify → review gate → commit → push → PR → report | "ship it" / "commit this" / "open a PR" on any branch |
+| **`pr-feedback`** | the reviewer's comments: collect what's unaddressed, act, answer | "go through the PR comments" |
+| **`merge`** | landing: sync base in, final review, green CI, merge, tear down | "merge it" on a branch with an open PR |
 
-Add `--lite` for a no-server run — worktree + simplify + commit + push + PR, but no ports, dev servers,
-or pretty URLs. Handy for backend-only, config, or docs changes. It's opt-in: pass the flag explicitly.
+Only `workspace` enters a *mode*. Invoked once, it holds for the session — you don't re-invoke it per
+step; the conversation drives the phases. It does **not** apply to read-only questions, ops work, or a
+one-off edit you want applied where you are, and "no workspace / just edit here" ends it for the
+session.
+
+The core contract: by the time you see a report, the change is already simplified, reviewed,
+committed, pushed and reflected in the PR — the report is the *last* thing produced, never the first.
+
+**Modes.** `mode: "lite"` (the shipped default) is worktree + ship + PR: no ports, dev servers or
+pretty URLs, and it needs nothing but git and `gh`. `mode: "full"` adds the unique port, the detached
+dev server, FE→BE wiring and the `http://<task>.localhost` URL each pass. Set it in the config; a
+`--lite` / `--full` flag overrides it for one session.
 
 ## The phases
 
@@ -22,33 +32,32 @@ or pretty URLs. Handy for backend-only, config, or docs changes. It's opt-in: pa
 |---|---|
 | **0 · Analyze** | Preflight the toolchain (git, `gh` + auth, config, repos, Caddy). The agent fixes what it can (create the config, install a missing CLI) and tells you the rest (`gh auth login`, cloning a repo, the one-time proxy setup). Then it understands the request and confirms scope — creating nothing else yet. |
 | **1 · Init** | `git worktree add` off the fresh base branch, symlink heavy deps (`node_modules`/`venv` — never build caches), copy `.env*`, allocate a unique stable port, start the **detached** dev server, and refresh the proxy. |
-| **2 · Iterate** | The **`iteration` skill** runs the contract (below), every prompt. |
-| **3 · Finish** | On your go-ahead ("done" / "merge it"): sync the base branch into the task branch (conflicts resolved in the worktree, so the PR reflects what lands and CI runs on it), wait for green CI, merge into base + push, and tear down the worktree / branch / port / proxy. |
+| **2 · Build + ship** | Make the change in the worktree, then the **`ship` skill** delivers it (below) — every prompt. |
+| **3 · Merge** | The **`merge` skill**, on your go-ahead ("done" / "merge it"): sync the base branch into the task branch (conflicts resolved in the worktree, so the PR reflects what lands and CI runs on it), wait for green CI, merge into base + push, and tear down the worktree / branch / port / proxy. |
 
 Dev servers are launched **detached** (their own session, reparented to launchd) so they survive a
-one-shot `claude -p` turn. A self-throttling **reaper** runs at the top of every iteration to cap live
+one-shot `claude -p` turn. A self-throttling **reaper** runs at the top of every pass to cap live
 servers (`max_live_servers`) and tear down workspaces whose PRs have all merged — so nothing piles up.
 
-## The `iteration` skill
+## The `ship` skill
 
-The per-iteration contract is its own reusable skill, **`feature:iteration`**, and `feature` delegates
-Phase 2 to it. Because it's a standalone skill, you can also use it **outside Feature Mode** — ask to
-"ship this" / "open a PR for this change" on any branch and it runs the same disciplined loop.
+Delivery is its own reusable skill, **`feature:ship`**, and `workspace` delegates Phase 2 to it. It
+starts once the change is on disk — writing the code is ordinary work and needs no skill. Standalone,
+ask to "ship this" / "open a PR for this change" on any branch and it runs the same loop.
 
-Every iteration, in order, with the chat summary **last**:
+Every pass, in order, with the report **last**:
 
 - **0 · Load the standing instructions** — the config's `instructions` / `repos[].instructions` plus
   `.claude/feature/INSTRUCTIONS.md` (injected whenever the file exists), so the project's house rules
   constrain the code before it's written. Nothing configured ⇒ skipped silently. See
   [configuration.md](configuration.md#instructions).
 - **0.5 · Pick up the PR's review feedback** — unaddressed comments on the PR become work items for
-  this same iteration, next to your chat prompt. No PR or nothing new ⇒ skipped silently. See
+  this same pass, next to your chat prompt. No PR or nothing new ⇒ skipped silently. See
   [PR review feedback](#pr-review-feedback) below.
-- **1 · Implement** the change in the worktree (or the current branch, standalone).
-- **2 · Simplify** — a real `/simplify` invocation on the changed files (quality only, must not change
-  behavior). Mandatory after any significant change; may skip a genuinely minor one — and it declares
+- **1 · Simplify** — a real `/simplify` invocation on the changed files (quality only, must not change
+  behavior). Governed by `simplify` in the config: on by default after any significant change, skipping a genuinely minor one — and it declares
   which (`simplify: ✓` / `simplify: skipped (minor)`).
-- **2.5 · Review** — an adversarial pass that finds the change's own bugs and fixes them, through
+- **2 · Review** — an adversarial pass that finds the change's own bugs and fixes them, through
   finders that never saw the conversation. Blocking, and the last thing before the commit. Off with
   `code_review.enabled: false`. See [the review gate](#the-review-gate) below.
 - **3 · Considerations** — validate each applicable cross-cutting dimension from the config's
@@ -56,11 +65,12 @@ Every iteration, in order, with the chat summary **last**:
   `considerations: mobile ✓ · rtl n/a · …` line. Empty list ⇒ skipped. See
   [configuration.md](configuration.md#considerations) for how to declare them.
 - **4 · Commit + push** — explicit git, per involved repo.
-- **5 · Ensure the PR** exists — created on the first iteration against the repo's base branch; later
+- **5 · Ensure the PR** exists — created on the first pass against the repo's base branch; later
   pushes update it automatically. Then **answer** every comment picked up in step 0.5, one reply per
   thread, each citing the commit that settles it.
-- **6 · Summary + review feedback + considerations + test links** — the summary comes last and ends
-  with clickable deep links that open exactly the affected page(s)/endpoint(s).
+- **6 · Report** — loaded from a template at the moment it's written
+  (`.claude/feature/report.md` shadows the shipped default), so the blocks are the project's, not the
+  agent's. It ends with clickable deep links that open exactly the affected page(s)/endpoint(s).
 
 Inside a feature workspace it also persists `summary.md` + the session id (which power the
 [dashboard](dashboard.md)) and hands out pretty `http://<task>.localhost/…` URLs. On a bare branch
@@ -69,7 +79,7 @@ Inside a feature workspace it also persists `summary.md` + the session id (which
 ## PR review feedback
 
 Comments you leave on the PR are treated as **work items, not notifications** — the agent picks them up
-at the start of the next iteration and delivers them together with whatever you asked for in chat. You
+at the start of the next pass and delivers them together with whatever you asked for in chat. You
 never have to paste a comment into the chat to get it done.
 
 Per comment the agent decides: implement it · answer it (a question needs no code) · push back with an
@@ -105,18 +115,18 @@ get a cleaned diff, not a list of homework.
 It can fire at three moments, each switched and sized on its own under
 [`code_review.passes`](configuration.md#code_reviewpasses):
 
-- **On the iteration that opens the PR** (`first_iteration`) and **on every one after it**
+- **On the pass that opens the PR** (`first_iteration`) and **on every one after it**
   (`later_iterations`), over everything not yet in the PR — uncommitted work, commits made this
-  iteration but not pushed, and new untracked files, across every repo the iteration touched. Both
-  cover the whole iteration's work: code written for your chat prompt and code written to satisfy a
+  pass but not pushed, and new untracked files, across every repo the pass touched. Both
+  cover the whole pass's work: code written for your chat prompt and code written to satisfy a
   PR comment are the same diff and get the same gate.
 - **Before the merge** (`final`), over the whole branch, right after the base has been merged into
   the task branch. This pass is the only one that sees the **conflict resolutions** — hand-written
-  code no one has reviewed — and the only one that can catch iteration 5 breaking an assumption
-  iteration 1 relied on. Its findings are fixed in the PR, before CI, and (by default) summarised in
+  code no one has reviewed — and the only one that can catch pass 5 breaking an assumption
+  pass 1 relied on. Its findings are fixed in the PR, before CI, and (by default) summarised in
   one PR comment.
 
-The scope is why the per-iteration passes stay cheap: each run only ever looks at what is new, so the
+The scope is why the per-pass runs stay cheap: each run only ever looks at what is new, so the
 cost is proportional to the change, not to the branch.
 
 What keeps that promise honest:
@@ -156,7 +166,7 @@ What keeps that promise honest:
 The angle budget is for the **run**, not per repo: a second repo adds diff for the same agents to
 read, not a second set of agents.
 
-**The three passes are not the same depth.** The per-iteration ones run at `medium` and the pre-merge
+**The three passes are not the same depth.** The per-pass ones run at `medium` and the pre-merge
 pass at `max` — because the pre-merge pass re-reviews every line of the branch anyway, on the
 integrated code. Paying full depth on all three is duplicated work, not extra coverage.
 
@@ -174,7 +184,7 @@ gate](review.md).** Key reference: [`code_review`](configuration.md#code_review)
 
 ## Self-improving considerations and instructions
 
-At **finish**, the agent reviews the session and may propose new entries drawn from what bit this task
+At **merge**, the agent reviews the session and may propose new entries drawn from what bit this task
 — a recurring "what about mobile?", an RTL-only bug, a forgotten empty state → `considerations`; a
 correction with one right answer every time ("always reuse the shared `Dropdown`") → `instructions`.
 The split is *check you re-run* vs *rule you follow*. They're added to your config only with your

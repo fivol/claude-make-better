@@ -1,6 +1,6 @@
 ---
 name: review
-description: Deep adversarial review of the change in flight — correctness bugs first, then reuse/simplification/efficiency/altitude/conventions, plus git history, prior review comments and cross-repo integration — every candidate independently verified, then fixed in place. Use before a change is committed, and again on the whole branch before it merges. The `iteration` skill invokes it as a mandatory gate; it also runs standalone on any repo. Not a style pass — for pure cleanup use `/simplify`.
+description: Deep adversarial review of the change in flight — correctness bugs first, then reuse/simplification/efficiency/altitude/conventions, plus git history, prior review comments and cross-repo integration — every candidate independently verified, then fixed in place. Use before a change is committed, and again on the whole branch before it merges. The `ship` skill invokes it as a mandatory gate; it also runs standalone on any repo. Not a style pass — for pure cleanup use `/simplify`.
 ---
 
 # Review — find what's wrong with this change, then fix it
@@ -62,8 +62,8 @@ workspace root from cwd. The second call brings the project's standing rules, wh
 criteria for the Conventions angle:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/skills/feature/scripts/config.py" --root "$ROOT" --review
-python3 "${CLAUDE_PLUGIN_ROOT}/skills/feature/scripts/config.py" --root "$ROOT" --instructions --repos "<repos>"
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/config.py" --root "$ROOT" --review
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/config.py" --root "$ROOT" --instructions --repos "<repos>"
 ```
 
 Then, in this order:
@@ -75,7 +75,7 @@ Then, in this order:
 - otherwise your level is `passes.<your pass>.level`, and `--level` overrides it if given. Say which
   pass and which level you used in the report header.
 
-**The three passes are not the same depth, and that is deliberate.** The two per-iteration passes are
+**The three passes are not the same depth, and that is deliberate.** The two per-pass runs are
 cheap by default because the same code is reviewed again, in full, once the branch is complete. The
 pre-merge pass is the one that must not be cut: it is the only pass that sees the whole change, the
 merged base and the conflict resolutions. Every pass level is clamped to `code_review.level`, so
@@ -432,18 +432,18 @@ P2s you don't believe in is worse than saying nothing.
 ### `--comment` — one summary on the PR
 
 **Resolve this from the config, not from what the caller remembered to type.** On the `final` pass,
-comment when `passes.final.comment` is `true`; `--no-comment` forces it off. On the two per-iteration
+comment when `passes.final.comment` is `true`; `--no-comment` forces it off. On the two per-pass
 passes, never — they don't comment, and there is no config that makes them.
 
 Post the report — minus the **Needs you** block, which belongs in chat — as a single comment, under
 the same 50-line cap, through the feedback script so it carries the agent marker:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/skills/feature/scripts/pr_feedback.py" \
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/pr_feedback.py" \
         reply --issue --cwd "$WT" [--pr <url>] --body-file <file>
 ```
 
-**Never** post it with a bare `gh pr comment`. Without the marker the next iteration picks your own
+**Never** post it with a bare `gh pr comment`. Without the marker the next pass picks your own
 review up as unaddressed reviewer feedback and starts answering itself.
 
 ## Red flags — STOP, you're breaking the contract

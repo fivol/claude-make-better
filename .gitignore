@@ -4,3 +4,6 @@
 .vscode/
 __pycache__/
 *.pyc
+
+# per-checkout Claude Code state (worktrees, local settings)
+.claude/
