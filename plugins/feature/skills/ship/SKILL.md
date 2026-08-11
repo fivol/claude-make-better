@@ -51,7 +51,7 @@ project behaves exactly as this file describes:
 | `code_review` | the gate in step 2: when it fires, how deep, what it may fix |
 | `considerations` | the cross-cutting dimensions checked every pass (empty ⇒ step off) |
 | `commit` | `{per_pass, message_language}` |
-| `pr` | `{enabled, one_per, draft, title_template, body_template}` |
+| `pr` | `{enabled, draft, title_template, body_template}` |
 | `branch` | task-branch naming (`prefix` / `template`) |
 | `output_language` | the language you write in |
 | `report.chat_template` | the report's blocks — see step 5 |
@@ -65,32 +65,30 @@ the user and note the deviation in one line under **Considerations**.
 Let `WT` = the checkout you work in: each involved repo's worktree in workspace
 context, or the current repo standalone. Run the steps per involved repo.
 
-### 0. Standing instructions — load them before you touch code
-Rules that hold for **every** pass (stack conventions, what must never be
-touched, style mandates):
+### 0. Inputs — who loaded them depends on how you were reached
+Two things must be in hand *before the code was written*, not now: the project's
+standing instructions, and the reviewer's unaddressed PR comments.
+
+- **Workspace context** — `workspace` Phase 2 already loaded both, before the
+  change. **Do not repeat either**: re-reading the instructions here changes
+  nothing, and a second `pr-feedback collect` re-opens items you just handled.
+- **Standalone** — you were invoked on a change someone already made, so this is
+  the first chance. Do both now, and treat anything the comments require as part
+  of this pass:
 
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/config.py" --root "$ROOT" \
         --instructions --repos "<the repos you touch, comma-separated>"   # omit --repos standalone
 ```
 
-Sources (both optional, both applied whenever present):
-`<root>/.claude/feature/INSTRUCTIONS.md` verbatim, and the config's
-`instructions` + `repos[].instructions`. Empty output ⇒ nothing configured ⇒
-skip silently.
+Then invoke the **`pr-feedback` skill** in `collect` mode (real Skill
+invocation — it owns the mechanics and the traps). `pr_feedback.enabled: false`,
+no PR yet, or nothing unaddressed ⇒ one line and carry on.
 
-Treat every line as a **standing constraint on the work**, weighted like the
-user's own instructions: obey it while implementing, simplifying and committing.
-Unlike `considerations` they are **not** a checklist — never report them
-per-item. Rules about how the *report* looks don't belong here; they belong to
-the report template (step 5).
-
-### 0.5. Pick up the PR's review feedback — same work list as the prompt
-Unaddressed comments on the PR are work items, exactly like the user's prompt,
-and they are collected **before** implementing so one pass covers both. Invoke
-the **`pr-feedback` skill** (a real Skill invocation) in `collect` mode — it owns
-the mechanics and the traps. `pr_feedback.enabled: false`, no PR yet or nothing
-unaddressed ⇒ it says so in one line and you carry on.
+Either way the instructions are **constraints on the code**, never a checklist:
+you obey them while simplifying, fixing review findings and committing, and you
+never report them per item. Rules about how the *report* looks don't belong to
+them at all — that's the report template (step 5).
 
 ### 1. Simplify — the cleanup gate
 Governed by `simplify` in config. `enabled: false` / `when: never` ⇒ skip
@@ -192,11 +190,9 @@ git -C "$WT" push                          # later passes
 
 ### 4. Ensure the PR exists
 `pr.enabled: false` ⇒ stop after the push and report the branch. Otherwise the
-branch must be pushed first; on the **first** pass create the PR (`gh` infers the
-repo from the remote) against its base branch — configured `base_branch` in
-workspace context, the repo's default base standalone. `pr.one_per: "repo"` (the
-default) means one PR per repo per task; `"task"` means the primary repo carries
-the PR and the others ride along in its body.
+branch must be pushed first; on the **first** pass create one PR per involved
+repo (`gh` infers the repo from the remote) against its base branch — configured
+`base_branch` in workspace context, the repo's default base standalone.
 
 ```bash
 ( cd "$WT" && gh pr create --base <base> --title "<title>" --body "<what + why + how to test>" )
@@ -209,8 +205,9 @@ Later passes need nothing — the push already updated the open PR.
 
 ### 4b. Answer on the PR
 Only **after** the push, so a reply can cite the commit that settles it. Invoke
-the **`pr-feedback` skill** in `answer` mode with what you did per item. Picked
-nothing up in step 0.5 ⇒ skip.
+the **`pr-feedback` skill** in `answer` mode, with the verdict and the fixing sha
+per item. Nothing was picked up for this pass (here or in `workspace` Phase 2) ⇒
+skip.
 
 ### 5. Report — now, and only now
 Load the template at the moment you write the report, not earlier:
@@ -247,7 +244,12 @@ creation. Standalone ⇒ skip this step entirely.
 The next user prompt starts a new pass.
 
 ## Red flags — STOP, you're about to break the contract
-- Invoking this skill to *write* code → no. It starts once the change is on disk.
+- Invoking this skill to *write* code → no. It starts once the change is on disk;
+  the constraints and the reviewer's comments that shape that code are loaded
+  before it, by whoever owns the writing phase.
+- Re-loading the instructions or re-running `pr-feedback collect` in workspace
+  context → no. Phase 2 did it before the code was written, which is the only
+  moment either is worth anything.
 - Committing without the review gate (step 2) → no. Impartial review before the
   commit is the whole point; after the push it reviews an empty diff.
 - Ending the turn while the review is still running → no. Then it didn't run.

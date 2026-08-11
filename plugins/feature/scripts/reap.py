@@ -118,7 +118,7 @@ def discover(cfg):
         for repo, info in (feature or {}).get("repos", {}).items():
             entry["repos"][repo] = {
                 "wt": os.path.join(task_dir, repo),
-                "branch": info.get("branch") or f"task-{task}",
+                "branch": info.get("branch") or config.branch_name(cfg, task),
                 "dev_pid": info.get("dev_pid"),
             }
 
@@ -149,7 +149,7 @@ def discover(cfg):
                         )
                         entry["repos"].setdefault(
                             repo,
-                            {"wt": wt_path, "branch": branch or f"task-{task}",
+                            {"wt": wt_path, "branch": branch or config.branch_name(cfg, task),
                              "dev_pid": None},
                         )
                 wt_path = branch = None

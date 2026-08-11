@@ -235,6 +235,11 @@ workspace, just edit here". The other three are ordinary skills you can call on 
 /plugin install feature@make-better
 ```
 
+The **plugin** is `feature` — that's the install name, the `/feature-admin` and
+`/feature-doctor` commands, and the `.claude/feature/` config directory. Its
+**skills** are `workspace`, `ship`, `pr-feedback`, `merge` and `review`; there is
+no skill called `feature`.
+
 ## Quick start
 
 1. Create a config at your workspace root — `<workspace-root>/.claude/feature/config.json` —

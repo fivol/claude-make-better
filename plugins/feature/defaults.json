@@ -19,7 +19,6 @@
   },
   "pr": {
     "enabled": true,
-    "one_per": "repo",
     "draft": false
   },
   "merge": {

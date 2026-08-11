@@ -190,8 +190,16 @@ def resume_info(task, feature, root):
         # record whose cwd is under worktrees/<task>/ or whose gitBranch is the
         # task branch. Matching a bare path mention would also catch orchestrator
         # sessions that merely `git -C`'d the path (e.g. this admin's own session).
-        pat = (r'"cwd":"[^"]*worktrees/%s/|"gitBranch":"task-%s"'
-               % (re.escape(task), re.escape(task)))
+        # Branch names come from the task's own state: `branch.template` is a
+        # config knob, so a hardcoded "task-<task>" would quietly stop matching
+        # for any project that set one. Legacy state without a branch keeps the
+        # old default.
+        branches = {
+            (r or {}).get("branch")
+            for r in ((feature or {}).get("repos") or {}).values()
+        } - {None, ""} or {f"task-{task}"}
+        pat = (r'"cwd":"[^"]*worktrees/%s/|"gitBranch":"(%s)"'
+               % (re.escape(task), "|".join(sorted(re.escape(b) for b in branches))))
         try:
             grep = subprocess.run(
                 ['grep', '-lE', pat, *glob.glob(os.path.join(sdir, "*.jsonl"))],

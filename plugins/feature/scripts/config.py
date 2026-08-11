@@ -244,12 +244,15 @@ def commit(cfg):
 
 
 def pr(cfg):
-    """Pull-request policy. `enabled: false` ⇒ push the branch and stop."""
+    """Pull-request policy. `enabled: false` ⇒ push the branch and stop.
+
+    One PR per involved repo is not a knob: a repo's PR is the unit the host,
+    CI and the reviewer all work in, and "one PR for the task" has no meaning
+    across repositories.
+    """
     p = cfg.get("pr") or {}
-    one_per = str(p.get("one_per", "repo")).strip().lower()
     return {
         "enabled": bool(p.get("enabled", True)),
-        "one_per": one_per if one_per in ("repo", "task") else "repo",
         "draft": bool(p.get("draft", False)),
         "title_template": p.get("title_template"),
         "body_template": p.get("body_template"),
@@ -519,7 +522,15 @@ def main():
     if want_report:
         argv.remove("--report")
     kind_arg = take_value_arg(argv, "--kind") or "chat"
+    branch_arg = take_value_arg(argv, "--branch")
     cfg = load(argv=argv)
+    if branch_arg:
+        # The one place a task branch's name is decided. Everything downstream
+        # reads it back from .feature.json, so a project that changes
+        # `branch.template` doesn't leave the reaper and the dashboard looking
+        # for a branch nobody created.
+        print(branch_name(cfg, branch_arg))
+        return
     if want_report:
         if kind_arg not in REPORT_KINDS:
             sys.exit(f"config: --kind must be one of {sorted(REPORT_KINDS)}")

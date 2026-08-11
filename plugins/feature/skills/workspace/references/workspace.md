@@ -77,12 +77,18 @@ involved repos. **One feature may span several repos** — repeat every step bel
 
 ## 1. Create the worktree (branch off fresh remote base)
 
-`base` is the repo's `base_branch` from config.
+`base` is the repo's `base_branch` from config. The **branch name comes from the config too** — never
+hardcode `task-<task>`. `branch.template` (default `task-{task}`) is what a project changes when its
+hosting or CI expects another shape, and one command resolves it:
 
 ```bash
+BRANCH=$(python3 "${CLAUDE_PLUGIN_ROOT}/scripts/config.py" --root "$ROOT" --branch "<task>")
 git -C "$ROOT/<repo>" fetch origin <base>
-git -C "$ROOT/<repo>" worktree add "$ROOT/<worktrees>/<task>/<repo>" -b "task-<task>" "origin/<base>"
+git -C "$ROOT/<repo>" worktree add "$ROOT/<worktrees>/<task>/<repo>" -b "$BRANCH" "origin/<base>"
 ```
+
+Write `$BRANCH` into `.feature.json` (§7) and read it back from there everywhere afterwards — it is
+the single source of truth for the branch, for you, for `reap.py` and for the dashboard alike.
 
 (`<worktrees>` = the `worktrees_dir` from config, default `worktrees`.)
 
@@ -223,7 +229,7 @@ is summarized:
   "session_id": "<$CLAUDE_CODE_SESSION_ID>",
   "repos": {
     "<repo>": {
-      "branch": "task-<task>",
+      "branch": "<the resolved branch name>",
       "base": "<base_branch>",
       "port": <port>,
       "host": "<repo>.<task>.<suffix>",

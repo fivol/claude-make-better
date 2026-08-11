@@ -9,6 +9,19 @@ A comment on the PR is a work item exactly like the user's chat prompt. This
 skill owns both halves: **collect** before you implement, **answer** after you
 push. It never decides *what* the code should do — it makes sure no item is lost.
 
+## Two modes — say which one you are in
+
+Invoked as `/feature:pr-feedback collect` or `/feature:pr-feedback answer`; with
+no argument, `collect`. The modes are separated because they belong to opposite
+ends of a pass, and running the wrong one is a real failure: `answer` before the
+push cites no commit, and a second `collect` after the work re-opens items you
+just handled.
+
+| Mode | When | What it does |
+|---|---|---|
+| `collect` | **before** any code is written — `workspace` Phase 2, or `ship` step 0 standalone | list unaddressed items, decide per item, hand the list back |
+| `answer` | **after** the push — `ship` step 4b | one reply per item picked up, each citing the fixing commit |
+
 All plumbing is one script; never hand-roll it with `gh api`:
 
 ```bash
@@ -19,7 +32,7 @@ Behaviour is driven by the `pr_feedback` block of the config (`enabled`, `reply`
 `resolve`, `include_outdated`, `include_bots`, `marker`); with no config at all
 the shipped defaults apply, so this works outside a workspace too.
 
-## Collect — before implementing
+## `collect` — before implementing
 
 ```bash
 python3 "$SC" list --cwd "$WT" [--pr <url>]
@@ -55,7 +68,7 @@ Then act per item — do what's clear, ask only what genuinely isn't:
 The user's prompt and the PR comments are **one** work list — deliver both. Never
 make the user repeat a comment in chat because you didn't look.
 
-## Answer — after the push
+## `answer` — after the push
 
 Only **after** the push, so a reply can cite the commit that settles it. Reply in
 the user's language (`output_language`), and be honest: agreement is a verdict,

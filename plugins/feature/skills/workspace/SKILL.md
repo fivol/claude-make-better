@@ -181,9 +181,12 @@ digraph phases {
   repos are involved and a short kebab-case `<task>` slug.
 - **Phase 1 — Init workspace** (lazy, only when implementation actually begins).
   See `references/workspace.md`, then build and ship immediately.
-- **Phase 2 — Build + ship** (every subsequent prompt/edit):
-  1. **Reap** first, every turn — it's what stops servers and worktrees from
-     piling up, and it's cheap and self-throttling:
+- **Phase 2 — Build + ship** (every subsequent prompt/edit). Four steps, and the
+  first two happen **before** any code is written — that is the whole reason
+  they are here and not in `ship`: a constraint on the code, or a work item from
+  the reviewer, read after the code exists is read too late to change it.
+  1. **Reap**, every turn — it's what stops servers and worktrees from piling
+     up, and it's cheap and self-throttling:
      ```bash
      python3 "${CLAUDE_PLUGIN_ROOT}/scripts/reap.py" --root "$ROOT"
      ```
@@ -193,12 +196,27 @@ digraph phases {
      Workspaces with an open or not-yet-created PR are never touched. If it
      evicted *this* task's server, restart it (`references/workspace.md` §6)
      before handing out URLs.
-  2. **Make the change** in the task worktree(s) — ordinary work, no skill needed.
-  3. **Invoke the `ship` skill** to deliver it. It auto-detects this workspace
+  2. **Load the work list and the constraints — before touching code.**
+     ```bash
+     python3 "${CLAUDE_PLUGIN_ROOT}/scripts/config.py" --root "$ROOT" \
+             --instructions --repos "<the repos this pass touches>"
+     ```
+     Standing rules from `instructions` / `repos[].instructions` /
+     `.claude/feature/INSTRUCTIONS.md`, assembled into one block. Empty output ⇒
+     nothing configured ⇒ skip silently. They are **constraints on the code you
+     are about to write**, weighted like the user's own instructions — never a
+     checklist, never reported per item.
+     Then, if this task already has a PR, invoke the **`pr-feedback` skill** in
+     `collect` mode: the reviewer's unaddressed comments are work items for
+     *this* pass, exactly like the user's prompt, and the point of collecting
+     them now is that one pass delivers both.
+  3. **Make the change** in the task worktree(s), covering the user's prompt and
+     the comments you just picked up — ordinary work, no skill needed.
+  4. **Invoke the `ship` skill** to deliver it. It auto-detects this workspace
      (`.feature.json` beside the worktree + the config) and therefore uses each
-     repo's configured base branch, spans all involved repos, persists
-     `summary.md` + stamps the session id for the dashboard, and emits pretty
-     `http://<task>.<suffix>/…` test links (lite ⇒ how-to-verify instead).
+     repo's configured base branch and branch name, spans all involved repos,
+     persists `summary.md` + stamps the session id for the dashboard, and emits
+     pretty `http://<task>.<suffix>/…` test links (lite ⇒ how-to-verify).
 - **Phase 3 — Merge** (only on explicit user go-ahead). Invoke the **`merge`**
   skill; it syncs the base in, runs the final review, waits for CI, merges per
   `merge.strategy`, and tears the workspace down.
@@ -218,6 +236,9 @@ don't restate them here.
 - About to merge without an explicit user go-ahead → no. `merge` is user-triggered.
 - Staying in Workspace Mode after the user asked to work directly → no.
 - Entering the mode for a read-only question → no.
+- Writing code before Phase 2 step 2 → no. The project's constraints and the
+  reviewer's open comments are inputs to the change, and they only count if you
+  have them before you write it.
 
 ## Repos & ports
 

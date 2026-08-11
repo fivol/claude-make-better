@@ -1,7 +1,7 @@
 {
   "name": "feature",
   "description": "Give every task its own isolated working copy — git worktree per repo, optional unique port, detached dev servers, pretty *.localhost URLs and a live admin dashboard — then ship it through a review gate into a PR and merge it. Four composable skills (workspace, ship, pr-feedback, merge) plus an impartial review gate, all config-driven via .claude/feature/config.json.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": {
     "name": "fivol",
     "url": "https://github.com/fivol"

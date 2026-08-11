@@ -5,7 +5,7 @@ The `feature` plugin is driven by one per-project file, with one optional compan
 ```
 <workspace-root>/.claude/feature/
 ├── config.json         # required — defines the workspace and its repos
-├── INSTRUCTIONS.md     # optional — standing rules, injected whenever it exists
+├── INSTRUCTIONS.md     # optional — constraints on the CODE, read before it is written
 ├── report.md           # optional — what the chat report contains
 ├── summary.md          # optional — what the dashboard card contains
 └── review-angles/      # optional — your own review angles, or rewrites of the built-in ones
@@ -22,6 +22,34 @@ walking up from the current directory to the nearest ancestor containing this fi
 
 Values are deep-merged over the plugin's shipped `defaults.json` (override wins; lists are replaced
 wholesale, so your `repos` list replaces the empty default).
+
+## Every slot says when it is read
+
+The plugin is `feature`; its skills are `workspace`, `ship`, `pr-feedback`, `merge` and `review`.
+Each thing you can configure has **one owner and one moment** — and the moment is part of the design,
+not an implementation detail. In ordinary software "loaded" and "in effect" are the same thing; for an
+agent they are not. A rule that arrives 100k tokens before the step it governs has decayed by the time
+that step runs, and the failure is silent: the file was there, the rule just lost to whatever was read
+last.
+
+| Slot | Owner | Read at |
+|---|---|---|
+| `instructions` / `repos[].instructions` / `INSTRUCTIONS.md` | project | **before the code is written** — `workspace` Phase 2, or `ship` step 0 standalone |
+| `considerations[]` | project | after the change, every pass — `ship` step 1b |
+| `simplify` / `code_review` / `commit` / `pr` | project | at the gate each governs |
+| `branch` | project | at worktree creation, then recorded in `.feature.json` |
+| `merge` | project | at the merge, by the `merge` skill |
+| `report.md` / `summary.md` | project | at the moment the report is written — `ship` step 5 |
+| the skills' own prose | plugin | when the skill is invoked |
+
+Two rules follow, and both are load-bearing:
+
+- **A slot with no moment is a junk drawer.** If you can't name the step that reads it, you haven't
+  found its home — you've found a place to put what you didn't want to classify. `INSTRUCTIONS.md` is
+  *constraints on the code*, read before the code is written. Report shape, per-change checks and
+  facts you look up on demand each have their own slot; filing them here makes all four unreliable.
+- **Policy is config, not prose.** If two reasonable teams could disagree and both be right, it
+  belongs in a key here with a shipped default — not in a skill someone has to fork.
 
 ## Full schema
 
@@ -46,7 +74,7 @@ wholesale, so your `repos` list replaces the empty default).
   "branch": { "prefix": "task-" },
   "simplify": { "enabled": true, "when": "significant" },
   "commit": { "per_pass": true, "message_language": "en" },
-  "pr": { "enabled": true, "one_per": "repo", "draft": false },
+  "pr": { "enabled": true, "draft": false },
   "merge": { "strategy": "merge", "via": "local-push", "wait_ci": true, "cleanup": true },
   "report": { "chat_template": null, "summary_template": null },
   "pr_feedback": {
@@ -135,7 +163,6 @@ the `/simplify` skill installed; without it the agent does the equivalent manual
 | Key | Default | Meaning |
 |---|---|---|
 | `enabled` | `true` | Open/update a PR at all. `false` ⇒ the branch is pushed and that's the end of the pass. |
-| `one_per` | `"repo"` | `repo` — one PR per repo per task (the norm for multi-repo tasks). `task` — the primary repo carries the PR and the others are named in its body. |
 | `draft` | `false` | Create PRs as drafts. |
 | `title_template` | — | Override the PR title. Placeholders: `{task}`, `{repo}`, `{base}`, `{branch}`. |
 | `body_template` | — | Override the PR body, same placeholders. |
