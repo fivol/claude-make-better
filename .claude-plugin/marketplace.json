@@ -4,6 +4,7 @@
     "name": "fivol",
     "url": "https://github.com/fivol"
   },
+  "description": "Claude Code plugins for codebase review, isolated feature delivery, and maintained integrations.",
   "plugins": [
     {
       "name": "make-better",
@@ -16,6 +17,12 @@
       "description": "Give every task its own isolated working copy — git worktree per repo, optional unique port, detached dev servers, pretty *.localhost URLs, live admin dashboard. Four composable skills: `workspace` (isolation + servers), `ship` (simplify → review gate → commit → push → PR → report), `pr-feedback` (work the reviewer's comments), `merge` (integrate + clean up). Config-driven via .claude/feature/config.json.",
       "source": "./plugins/feature",
       "version": "1.1.0"
+    },
+    {
+      "name": "hermes-tweet",
+      "description": "Set up and safely operate the maintained Hermes Tweet integration from Claude Code.",
+      "source": "./plugins/hermes-tweet",
+      "version": "0.1.0"
     }
   ]
 }
